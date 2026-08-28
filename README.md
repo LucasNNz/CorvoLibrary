@@ -73,3 +73,8 @@ O `next build` completo deve ser executado no primeiro Preview Vercel. O ambient
 ## Documentação histórica
 
 As especificações e relatórios das versões V39–V61.8 permanecem em `docs/`. O documento principal da migração é `MIGRACAO_VERCEL_V61_9.md`.
+
+
+## THUMB + ZIP LINKS-ONLY FINAL
+
+A V61.9 consolida THUMB e pacote final sem transporte de arquivos pelo chat. THUMB entra por `fast_push_generated_media` (HTTPS) ou `preparar_upload_midia` + PUT direto R2 + `confirmar_upload_midia`; QA usa `obter_thumbs_links`. O ZIP final usa fila idempotente `download_packages`: `gerar_pacote_final` → `listar_pacotes_prontos_para_download` → `obter_link_download_pacote` → download direto no PC → `confirmar_download_pacote`. A conclusão do projeto também enfileira o pacote automaticamente. `MCP_FILE_RESOURCE_DELIVERY` permanece estruturalmente desabilitado. Veja `IMPLEMENTACAO_THUMB_ZIP_LINKS_ONLY_V61_9.txt`.

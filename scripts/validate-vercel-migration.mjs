@@ -17,9 +17,11 @@ async function files(dir) {
 }
 
 const packageJson = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-for (const [script, expected] of Object.entries({ dev: 'next dev', build: 'next build', start: 'next start' })) {
+for (const [script, expected] of Object.entries({ dev: 'next dev', start: 'next start' })) {
   if (packageJson.scripts?.[script] !== expected) errors.push(`script ${script} != ${expected}`);
 }
+if (!String(packageJson.scripts?.build || '').includes('next build') || !String(packageJson.scripts?.build || '').includes('typecheck')) errors.push('build must run typecheck before next build');
+if (packageJson.scripts?.typecheck !== 'tsc --noEmit --pretty false') errors.push('typecheck script missing or unexpected');
 for (const dep of ['vinext','vite','wrangler','@cloudflare/vite-plugin','@cf-wasm/photon','@cf-wasm/png','@jsquash/avif']) {
   if (packageJson.dependencies?.[dep] || packageJson.devDependencies?.[dep]) errors.push(`legacy dependency: ${dep}`);
 }

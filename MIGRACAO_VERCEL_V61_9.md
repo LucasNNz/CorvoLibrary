@@ -87,3 +87,8 @@ Validação desta revisão: 129/129 regressões PASS, auditoria estrutural Verce
 - Substituição D1 → Turso cria snapshot lógico no R2 antes de apagar o destino.
 - Falha durante substituição aciona rollback automático; backup anterior também pode ser restaurado manualmente pela interface.
 - Login/sessão/master key do Turso são preservados durante a importação do D1.
+
+
+## THUMB + ZIP LINKS-ONLY FINAL
+
+A V61.9 consolida THUMB e pacote final sem transporte de arquivos pelo chat. THUMB entra por `fast_push_generated_media` (HTTPS) ou `preparar_upload_midia` + PUT direto R2 + `confirmar_upload_midia`; QA usa `obter_thumbs_links`. O ZIP final usa fila idempotente `download_packages`: `gerar_pacote_final` → `listar_pacotes_prontos_para_download` → `obter_link_download_pacote` → download direto no PC → `confirmar_download_pacote`. A conclusão do projeto também enfileira o pacote automaticamente. `MCP_FILE_RESOURCE_DELIVERY` permanece estruturalmente desabilitado. Veja `IMPLEMENTACAO_THUMB_ZIP_LINKS_ONLY_V61_9.txt`.

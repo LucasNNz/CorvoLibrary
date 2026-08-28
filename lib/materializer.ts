@@ -242,7 +242,11 @@ function avifDimensions(bytes: Uint8Array) {
   return { width: null, height: null };
 }
 
-function inspectBytes(bytes: Uint8Array) {
+type ValidInspection = { ok: true; mime: string; extension: string; width: number | null; height: number | null };
+type InvalidInspection = { ok: false; reason: "EMPTY_FILE" | "HTML_INSTEAD_OF_IMAGE" | "UNSUPPORTED_FORMAT" };
+type InspectionResult = ValidInspection | InvalidInspection;
+
+function inspectBytes(bytes: Uint8Array): InspectionResult {
   if (!bytes.byteLength) return { ok: false, reason: "EMPTY_FILE" as const };
   if (looksLikeHtml(bytes)) return { ok: false, reason: "HTML_INSTEAD_OF_IMAGE" as const };
   if (bytes.length >= 24 && bytes[0] === 0x89 && String.fromCharCode(...bytes.subarray(1, 4)) === "PNG") {
@@ -288,7 +292,6 @@ function inspectBytes(bytes: Uint8Array) {
   return { ok: false, reason: "UNSUPPORTED_FORMAT" as const };
 }
 
-type ValidInspection = Extract<ReturnType<typeof inspectBytes>, { ok: true }>;
 type NormalizedImage = {
   bytes: Uint8Array;
   inspection: ValidInspection;

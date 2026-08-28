@@ -103,7 +103,7 @@ export function parseSources(text: string): SourceInput[] {
   const normalized = text.replace(/\r/g, "").trim();
   if (!normalized) return [];
   const blocks = parseBlocks(normalized);
-  const sources = blocks.flatMap((block, index) => {
+  const sources = blocks.flatMap<SourceInput>((block, index): SourceInput[] => {
     const meaningful = block.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
     if (meaningful.length === 1 && meaningful[0].includes("|")) {
       const parts = meaningful[0].split("|").map((part) => part.trim());

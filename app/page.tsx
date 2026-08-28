@@ -661,7 +661,7 @@ function AutomaticProjects({ onFlash }: { onFlash: (message: string) => void }) 
   }
   async function exportProduction() {
     if (!selectedId) return; setBusy(true);
-    try { const response = await fetch(`/api/projects/${encodeURIComponent(selectedId)}/production`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ action:"export" }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error); await loadDetail(selectedId); await loadProjects(); onFlash("ZIP completo de produção gerado com roteiro, imagens, thumbs, títulos e metadados."); }
+    try { const response = await fetch(`/api/projects/${encodeURIComponent(selectedId)}/production`, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ action:"export" }) }); const payload = await response.json(); if (!response.ok) throw new Error(payload.error); await loadDetail(selectedId); await loadProjects(); onFlash("ZIP completo enfileirado no R2. Quando ficar READY_FOR_DOWNLOAD, o agente pode pedir o link assinado e baixar direto."); }
     catch (error) { onFlash(friendlyCollectionMessage(error instanceof Error ? error.message : error)); } finally { setBusy(false); }
   }
   function downloadRequirementsTemplate() {

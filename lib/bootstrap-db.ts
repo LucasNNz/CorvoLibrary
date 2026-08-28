@@ -2,15 +2,16 @@ import { getLibsqlClient } from './platform/runtime';
 
 let inFlight: Promise<void> | null = null;
 
-export function ensureBootstrapSettingsTable() {
+export function ensureBootstrapSettingsTable(): Promise<void> {
   if (!inFlight) {
-    inFlight = getLibsqlClient().executeMultiple(`
+    const task = getLibsqlClient().executeMultiple(`
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY NOT NULL,
         value TEXT NOT NULL,
         updated_at INTEGER NOT NULL
       );
-    `).then(() => undefined).finally(() => { inFlight = null; });
+    `).then(() => undefined).finally(() => { if (inFlight === task) inFlight = null; });
+    inFlight = task;
   }
-  return inFlight;
+  return inFlight!;
 }

@@ -47,6 +47,7 @@ import { getHostRanking } from "./inventory-intelligence";
 import { completeSupervisorExecution, deriveProjectPipelineState } from "./supervisor-lease";
 import { recordRouteMetric, refreshProjectSummary } from "./performance-control";
 import { getProjectProductionPackage } from "./project-production-package";
+import { queueFinalPackage } from "./delivery-packages";
 
 type ParsedProjectItem = { itemKey: string; term: string; context?: string; kind: string; universe?: string; notes?: string; priority: number };
 type StrategyState = {
@@ -781,15 +782,13 @@ async function replanFailedItem(project: typeof automaticProjects.$inferSelect, 
   const history = state.query_history || [];
   let query = term.term;
   const unused = (plan.queries || []).find((candidate) => !history.includes(candidate));
-  if (["TRY_NEXT_QUERY", "RELINK_ITEM", "START_EXTERNAL_SEARCH"].includes(plan.action)) {
-    query = unused || "";
-    if (!query && plan.reference && !history.includes(plan.reference)) query = plan.reference;
-  } else if (plan.action === "TRY_NEXT_SOURCE") query = term.term;
-  else query = unused || "";
+  query = unused || "";
+  if (!query && plan.reference && !history.includes(plan.reference)) query = plan.reference;
+  // planItem() é determinístico neste caminho e só produz RELINK_ITEM/START_EXTERNAL_SEARCH.
   // Nunca reexecuta silenciosamente uma query já registrada como tentada.
-  if (!query || (plan.action !== "TRY_NEXT_SOURCE" && history.includes(query))) return false;
+  if (!query || history.includes(query)) return false;
   plannedState.query_history = [...new Set([...(plannedState.query_history || []), query])].slice(-100);
-  const nextQueryRounds = queryRounds + (plan.action === "TRY_NEXT_SOURCE" ? 0 : 1);
+  const nextQueryRounds = queryRounds + 1;
   plannedState.attempt_budget = { ...budget, query_rounds: nextQueryRounds, reference_changes: (budget.reference_changes || 0) + (plan.action === "RELINK_ITEM" ? 1 : 0) };
   const failures = Array.isArray(plannedState.failure_history) ? plannedState.failure_history : [];
   plannedState.failure_history = [...failures, { at: new Date().toISOString(), term: term.term, status: term.status, reason: term.failureReason || "SEARCH_EXHAUSTED", supervisor_action: plan.action }].slice(-100);
@@ -1432,7 +1431,9 @@ export async function completeAutomaticProject(input: Record<string, unknown>) {
     await projectEvent(row.id, "project_manually_completed", status, { ownerAction: true, groupedProjects: groupIds });
     if (row.supervisorExecutionId) await completeSupervisorExecution(row.id, row.supervisorExecutionId, "CONCLUIDA").catch(() => undefined);
   }
-  return getAutomaticProject(projectId);
+  const packageDelivery = await queueFinalPackage({ project_id: projectId, tipo: "FULL_PROJECT_ZIP" }).catch((error) => ({ status:"PACKAGE_QUEUE_FAILED", error:error instanceof Error ? error.message : String(error) }));
+  const detail = await getAutomaticProject(projectId);
+  return { ...detail, package_delivery: packageDelivery };
 }
 
 export async function getProjectAutomationAvailability(input: Record<string, unknown>) {

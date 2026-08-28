@@ -44,36 +44,30 @@ async function signPreview(r2Key: string, mimeType: string, fileName?: string, i
   }
 }
 
+// Industrial-safe default: LINKS_ONLY is structural, not a per-call convention.
 export async function getChatDeliveryMode(force = false): Promise<ChatDeliveryMode> {
-  if (!force && modeCache && modeCache.expiresAt > Date.now()) return modeCache.value;
-  const rows = await getDb().select().from(settings).where(inArray(settings.key, [CHAT_DELIVERY_KEY, MCP_RESOURCE_KEY]));
-  const map = new Map(rows.map((row) => [row.key, row.value.trim().toUpperCase()]));
-  // Industrial-safe default: no outgoing MCP file resources unless explicitly enabled.
-  const chatMode = map.get(CHAT_DELIVERY_KEY) === "ON" ? "ON" : "OFF";
-  const resourceMode = chatMode === "ON" && map.get(MCP_RESOURCE_KEY) === "ENABLED" ? "ENABLED" : "DISABLED";
+  void force;
   const value: ChatDeliveryMode = {
-    chat_file_delivery_mode: chatMode,
-    mcp_file_resource_delivery: resourceMode,
-    links_only: resourceMode !== "ENABLED",
-    rule: resourceMode === "ENABLED" ? "LEGACY_RESOURCE_LINKS_ALLOWED" : "IDS_METADATA_SIGNED_R2_URLS_ONLY",
+    chat_file_delivery_mode: "OFF",
+    mcp_file_resource_delivery: "DISABLED",
+    links_only: true,
+    rule: "IDS_METADATA_SIGNED_R2_URLS_ONLY",
   };
   modeCache = { value, expiresAt: Date.now() + MODE_CACHE_MS };
   return value;
 }
 
 export async function isMcpFileResourceDeliveryEnabled() {
-  return (await getChatDeliveryMode()).mcp_file_resource_delivery === "ENABLED";
+  return false;
 }
 
 export async function configureChatDeliveryMode(modeInput: unknown) {
   const mode = clean(modeInput).toUpperCase();
-  if (!["OFF","ON"].includes(mode)) throw new Error("CHAT_FILE_DELIVERY_MODE_INVALID");
-  const date = now();
-  const resource = mode === "ON" ? "ENABLED" : "DISABLED";
-  const db = getDb();
+  if (mode !== "OFF") throw new Error("LINKS_ONLY_ENFORCED: CHAT_FILE_DELIVERY_MODE must remain OFF");
+  const date = now(), db = getDb();
   await db.batch([
-    db.insert(settings).values({ key:CHAT_DELIVERY_KEY, value:mode, updatedAt:date }).onConflictDoUpdate({ target:settings.key, set:{ value:mode, updatedAt:date } }),
-    db.insert(settings).values({ key:MCP_RESOURCE_KEY, value:resource, updatedAt:date }).onConflictDoUpdate({ target:settings.key, set:{ value:resource, updatedAt:date } }),
+    db.insert(settings).values({ key:CHAT_DELIVERY_KEY, value:"OFF", updatedAt:date }).onConflictDoUpdate({ target:settings.key, set:{ value:"OFF", updatedAt:date } }),
+    db.insert(settings).values({ key:MCP_RESOURCE_KEY, value:"DISABLED", updatedAt:date }).onConflictDoUpdate({ target:settings.key, set:{ value:"DISABLED", updatedAt:date } }),
   ]);
   modeCache = null;
   return getChatDeliveryMode(true);
@@ -247,7 +241,7 @@ export async function getOperationalSummaryShort(projectIdInput: unknown) {
 
 export async function exportQaPacketJson(input: PacketInput) {
   const packet=await getFastVisualPacket({...input,limit:Math.max(1,Math.min(50,Number(input.limit)||50)),include_original_url:true});
-  const projectId=clean(input.project_id),candidates=(packet.candidates as Array<Record<string,unknown>>).map((candidate)=>({...candidate,preview_url:candidate.signed_preview_url,original_r2_url:candidate.signed_original_url}));
+  const projectId=clean(input.project_id),candidates:Array<Record<string,unknown>>=(packet.candidates as Array<Record<string,unknown>>).map((candidate)=>({...candidate,preview_url:candidate.signed_preview_url,original_r2_url:candidate.signed_original_url}));
   const signature=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify({projectId,ids:candidates.map((row)=>row.candidate_id),version:packet.project_version})));
   const hash=Array.from(new Uint8Array(signature).subarray(0,12),(b)=>b.toString(16).padStart(2,"0")).join("");
   const key=`exports/qa-json/${safe(projectId)}/${hash}.json`;

@@ -46,7 +46,7 @@ test('V60 MCP exposes plan hot path and keeps it low risk/idempotent', async () 
   }
   for (const name of ['supervisor_exchange','executar_ate_divergencia','executar_tick_planos','pausar_plano','retomar_plano','cancelar_plano']) assert.match(policy, new RegExp(`"${name}"`));
   assert.match(policy, /policyVersion: "V61"/);
-  assert.match(route, /version: "6\.1\.0"/);
+  assert.match(route, /version: "6\.1\.9"/);
   assert.match(route, /1 comando do Supervisor cria um SUPERVISOR_PLAN/);
 });
 

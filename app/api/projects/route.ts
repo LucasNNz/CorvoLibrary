@@ -29,9 +29,9 @@ export async function PATCH(request: Request) {
     if (action === "zip") return Response.json(await regenerateProjectZip(String(input.projeto_id || "")));
     if (action === "reconciliar") return Response.json(await reconcileAutomaticProject(String(input.projeto_id || "")));
     if (action === "validar") return Response.json(await getProjectConsistencyGate(String(input.projeto_id || "")));
-    if (action === "concluir") return Response.json(await completeAutomaticProject(input));
+    if (action === "concluir") { const result=await completeAutomaticProject(input); wakeDataPlane(`API_PROJECT_COMPLETE:${String(input.projeto_id || input.project_id || "")}`); return Response.json(result); }
     if (action === "desconcluir") return Response.json(await reopenAutomaticProject({ ...input, confirmar_reabertura: true, origem: "OWNER_UI", motivo: String(input.motivo || "Desconclusão explícita pela interface") }));
-    if (action === "concluir_lote") return Response.json(await completeAutomaticProjects(input));
+    if (action === "concluir_lote") { const result=await completeAutomaticProjects(input); wakeDataPlane("API_PROJECT_COMPLETE_BATCH"); return Response.json(result); }
     if (action === "desconcluir_lote") return Response.json(await completeAutomaticProjects({ ...input, concluido: false }));
     const result = await processAutomaticProject(input); wakeDataPlane(`API_PROJECT_PROCESS:${String(input.projeto_id || input.project_id || "")}`); return Response.json(result);
   } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Falha" }, { status: 400 }); }

@@ -22,7 +22,8 @@ function normalizedR2Endpoint(accountId: string, configuredEndpoint?: string) {
   return endpoint;
 }
 
-export async function createSignedR2GetUrl(r2Key: string, minutes: number, fileName?: string, mimeType?: string) {
+
+async function resolveR2SigningConnection() {
   const saved = await getCloudflareConnection();
   const envAccountId = process.env.R2_ACCOUNT_ID?.trim() || process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || "";
   const envEndpoint = process.env.R2_ENDPOINT?.trim() || "";
@@ -31,20 +32,26 @@ export async function createSignedR2GetUrl(r2Key: string, minutes: number, fileN
   const envSecretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() || "";
   const connection = saved?.connection || ((envAccountId || envEndpoint) && envBucket && envAccessKeyId && envSecretAccessKey ? {
     accountId: envAccountId || new URL(envEndpoint).hostname.replace(/\.r2\.cloudflarestorage\.com$/, ""),
-    bucket: envBucket,
-    accessKeyId: envAccessKeyId,
-    secretAccessKey: envSecretAccessKey,
-    endpoint: envEndpoint,
+    bucket: envBucket, accessKeyId: envAccessKeyId, secretAccessKey: envSecretAccessKey, endpoint: envEndpoint,
   } : null);
   if (!connection) throw new Error("R2_SIGNING_NOT_CONFIGURED");
   const endpoint = normalizedR2Endpoint(connection.accountId, connection.endpoint);
+  const aws = new AwsClient({ accessKeyId: connection.accessKeyId, secretAccessKey: connection.secretAccessKey, service: "s3", region: "auto" });
+  return { connection, endpoint, aws };
+}
+
+export async function createSignedR2PutUrl(r2Key: string, minutes: number, mimeType: string) {
+  const { connection, endpoint, aws } = await resolveR2SigningConnection();
   const objectUrl = new URL(`${encodeURIComponent(connection.bucket)}/${encodeR2Key(r2Key)}`, endpoint);
-  const aws = new AwsClient({
-    accessKeyId: connection.accessKeyId,
-    secretAccessKey: connection.secretAccessKey,
-    service: "s3",
-    region: "auto",
-  });
+  const url = new URL(objectUrl);
+  url.searchParams.set("X-Amz-Expires", String(Math.max(60, Math.min(3600, minutes * 60))));
+  const headers = { "content-type": mimeType || "application/octet-stream" };
+  const signed = await aws.sign(url, { method: "PUT", headers, aws: { signQuery: true } });
+  return { url: signed.url, method: "PUT" as const, headers, expires_at: new Date(Date.now() + Math.max(60, Math.min(3600, minutes * 60)) * 1000).toISOString() };
+}
+export async function createSignedR2GetUrl(r2Key: string, minutes: number, fileName?: string, mimeType?: string) {
+  const { connection, endpoint, aws } = await resolveR2SigningConnection();
+  const objectUrl = new URL(`${encodeURIComponent(connection.bucket)}/${encodeR2Key(r2Key)}`, endpoint);
   await ensureDeliveryObject(aws, objectUrl, r2Key, mimeType);
   const url = new URL(objectUrl);
   url.searchParams.set("X-Amz-Expires", String(Math.max(60, Math.min(3600, minutes * 60))));

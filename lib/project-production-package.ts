@@ -2,6 +2,7 @@ import { env } from "./platform/runtime";
 import { toArrayBuffer } from "./web-crypto";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { strToU8, zipSync } from "fflate";
+import sharp from "sharp";
 import { getDb } from "../db";
 import {
   assets,
@@ -35,6 +36,12 @@ export type ProjectThumbInput = {
   observation?: string;
   observacao?: string;
   source_type?: string;
+  universe?: string;
+  tags?: string[];
+  script_reference?: string;
+  referencia_roteiro?: string;
+  status_qa?: string;
+  metadata?: Record<string, unknown>;
 };
 
 export type ProjectTitleInput = {
@@ -109,7 +116,7 @@ function normalizeThumbRow(row: typeof projectProductionAssets.$inferSelect) {
   };
 }
 
-export async function pushProjectThumbnailFileBytes(bytes: Uint8Array, fileName: string, mimeHint: string, context: ProjectThumbInput) {
+async function registerProjectThumbnailBytes(bytes: Uint8Array, fileName: string, mimeHint: string, context: ProjectThumbInput, existingR2Key?: string) {
   const projectId = clean(context.project_id);
   if (!projectId) throw new Error("PROJECT_ID_REQUIRED");
   await requireProject(projectId);
@@ -117,44 +124,76 @@ export async function pushProjectThumbnailFileBytes(bytes: Uint8Array, fileName:
   if (bytes.byteLength > MAX_THUMB_BYTES) throw new Error("THUMB_LIMIT_25_MB");
   const mime = sniffMime(bytes, mimeHint);
   if (!mime || !THUMB_MIMES.has(mime)) throw new Error("THUMB_INVALID_MIME");
+  const imageMeta = await sharp(bytes, { animated: true }).metadata();
+  const width = Number(imageMeta.width || 0), height = Number(imageMeta.height || 0);
+  if (!width || !height) throw new Error("THUMB_DIMENSIONS_UNAVAILABLE");
   const sha256 = await sha256Hex(bytes), variant = clean(context.variant || context.variante), agentOrigin = clean(context.agent_origin || context.agente_origem);
   const operationId = clean(context.operation_id) || await stableOperationId("THOP", `${projectId}|${sha256}|${variant}|${agentOrigin}`);
   const db = getDb();
   const [existingOperation] = await db.select().from(projectProductionAssets).where(eq(projectProductionAssets.operationId, operationId)).limit(1);
-  if (existingOperation) return { status: "IDEMPOTENT_REUSED", candidate: normalizeThumbRow(existingOperation) };
+  if (existingOperation) return { status: "IDEMPOTENT_REUSED", asset_id: existingOperation.id, width, height, sha256: existingOperation.sha256 || sha256, candidate: normalizeThumbRow(existingOperation) };
 
   const [sameProjectFile] = await db.select().from(projectProductionAssets).where(and(eq(projectProductionAssets.projectId, projectId), eq(projectProductionAssets.kind, "THUMB"), eq(projectProductionAssets.sha256, sha256))).orderBy(desc(projectProductionAssets.createdAt)).limit(1);
   const [catalogAsset] = sameProjectFile ? [] : await db.select().from(assets).where(eq(assets.sha256, sha256)).orderBy(desc(assets.createdAt)).limit(1);
   const id = makeId("PTHUMB"), at = now();
   const rawName = safeName(clean(context.name) || fileName || `thumb-${id}`);
   const inputName = rawName.includes(".") ? rawName : `${rawName}.${extensionForMime(mime)}`;
-  let r2Key = sameProjectFile?.r2Key || catalogAsset?.r2Key || "";
+  const uploadedR2Key = clean(existingR2Key);
+  let r2Key = sameProjectFile?.r2Key || catalogAsset?.r2Key || uploadedR2Key || "";
   let storedNewBytes = false;
   if (!r2Key) {
     const ext = inputName.includes(".") ? "" : `.${extensionForMime(mime)}`;
     r2Key = `projects/${projectId}/production/thumbs/${id}-${inputName}${ext}`;
-    await env.BUCKET.put(r2Key, bytes, { httpMetadata: { contentType: mime }, customMetadata: { projectId, productionKind: "THUMB", sha256, originalName: inputName } });
+    await env.BUCKET.put(r2Key, bytes, { httpMetadata: { contentType: mime }, customMetadata: { projectId, productionKind: "THUMB", sha256, originalName: inputName, width: String(width), height: String(height) } });
     storedNewBytes = true;
   }
-  const sourceType = clean(context.source_type).toUpperCase() || "CHAT_FILE";
-  const sourceUrl = sourceType === "CHAT_FILE" ? `chat-file://${encodeURIComponent(inputName)}` : clean(context.source_url) || null;
+  const sourceType = clean(context.source_type).toUpperCase() || "WEB";
+  const sourceUrl = sourceType === "CHAT_FILE" ? null : clean(context.source_url) || null;
+  const requestedQa = clean(context.status_qa).toUpperCase();
+  const published = requestedQa === "PUBLISHED_THUMB";
+  const preapproved = published || requestedQa === "APPROVED" || requestedQa === "THUMB_APPROVED";
+  const status = preapproved ? "THUMB_APPROVED" : "THUMB_CANDIDATE";
+  const notePayload = {
+    observation: clean(context.observation || context.observacao) || null,
+    universe: clean(context.universe) || null,
+    tags: Array.isArray(context.tags) ? context.tags.map(clean).filter(Boolean).slice(0, 50) : [],
+    script_reference: clean(context.script_reference || context.referencia_roteiro) || null,
+    requested_qa_status: requestedQa || "READY_FOR_QA",
+    dimensions: { width, height },
+    metadata: context.metadata && typeof context.metadata === "object" ? context.metadata : {},
+  };
   try {
+    if (published) await db.update(projectProductionAssets).set({ selected: false, updatedAt: at }).where(and(eq(projectProductionAssets.projectId, projectId), eq(projectProductionAssets.kind, "THUMB")));
     await db.insert(projectProductionAssets).values({
       id, operationId, projectId, kind: "THUMB", name: inputName,
       variant: variant || null, agentOrigin: agentOrigin || null,
-      note: clean(context.observation || context.observacao) || null,
-      status: "THUMB_CANDIDATE", selected: false, sourceType, sourceUrl,
-      r2Key, mimeType: mime, sizeBytes: bytes.byteLength, sha256, createdAt: at, updatedAt: at,
+      note: JSON.stringify(notePayload),
+      status, selected: published, sourceType, sourceUrl,
+      r2Key, mimeType: mime, sizeBytes: bytes.byteLength, sha256,
+      decisionSource: preapproved ? "PUSH" : null,
+      decisionNote: preapproved ? requestedQa || "APPROVED" : null,
+      decidedAt: preapproved ? at : null,
+      createdAt: at, updatedAt: at,
     });
   } catch (error) {
     if (storedNewBytes) await env.BUCKET.delete(r2Key).catch(() => undefined);
     const [winner] = await db.select().from(projectProductionAssets).where(eq(projectProductionAssets.operationId, operationId)).limit(1);
-    if (winner) return { status: "IDEMPOTENT_REUSED", candidate: normalizeThumbRow(winner) };
+    if (winner) return { status: "IDEMPOTENT_REUSED", asset_id: winner.id, width, height, sha256: winner.sha256 || sha256, candidate: normalizeThumbRow(winner) };
     throw error;
   }
-  await bumpProductionRevision(projectId, "production_thumb_pushed", { thumb_id: id, operation_id: operationId, source_type: sourceType, sha256, reused_r2: !storedNewBytes, agent_origin: agentOrigin || null });
+  if (uploadedR2Key && r2Key !== uploadedR2Key) await env.BUCKET.delete(uploadedR2Key).catch(() => undefined);
+  await bumpProductionRevision(projectId, "production_thumb_pushed", { thumb_id: id, operation_id: operationId, source_type: sourceType, sha256, reused_r2: !storedNewBytes, agent_origin: agentOrigin || null, width, height, status, published });
   const [row] = await db.select().from(projectProductionAssets).where(eq(projectProductionAssets.id, id)).limit(1);
-  return { status: sameProjectFile || catalogAsset ? "DUPLICATE_REUSED" : "THUMB_CANDIDATE", candidate: normalizeThumbRow(row) };
+  return { status: published ? "PUBLISHED_THUMB" : preapproved ? "APPROVED" : sameProjectFile || catalogAsset ? "DUPLICATE_REUSED" : "READY_FOR_QA", asset_id: id, r2_key: r2Key, width, height, sha256, operation_id: operationId, candidate: normalizeThumbRow(row) };
+}
+
+export async function registerProjectThumbnailExistingR2(r2Key: string, fileName: string, mimeHint: string, context: ProjectThumbInput) {
+  const key = clean(r2Key);
+  if (!key) throw new Error("R2_KEY_REQUIRED");
+  const object = await env.BUCKET.get(key);
+  if (!object) throw new Error("THUMB_R2_NOT_FOUND");
+  const bytes = new Uint8Array(await object.arrayBuffer());
+  return registerProjectThumbnailBytes(bytes, fileName, mimeHint || object.httpMetadata?.contentType || "", context, key);
 }
 
 export async function pushProjectThumbnailUrl(input: ProjectThumbInput) {
@@ -164,7 +203,7 @@ export async function pushProjectThumbnailUrl(input: ProjectThumbInput) {
     const [existing] = await getDb().select().from(projectProductionAssets).where(eq(projectProductionAssets.operationId, operationId)).limit(1);
     if (existing) return { status:"IDEMPOTENT_REUSED", candidate:normalizeThumbRow(existing) };
   }
-  if (!sourceUrl.startsWith("https://") && !sourceUrl.startsWith("http://")) throw new Error("SOURCE_URL_INVALID");
+  if (!sourceUrl.startsWith("https://")) throw new Error("IMAGE_URL_HTTPS_REQUIRED");
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   let response: Response;
   try { response = await fetch(sourceUrl, { signal: controller.signal, redirect: "follow" }); }
@@ -175,7 +214,7 @@ export async function pushProjectThumbnailUrl(input: ProjectThumbInput) {
   if (length > MAX_THUMB_BYTES) throw new Error("THUMB_LIMIT_25_MB");
   const bytes = new Uint8Array(await response.arrayBuffer());
   const urlName = (() => { try { return decodeURIComponent(new URL(sourceUrl).pathname.split("/").pop() || ""); } catch { return ""; } })();
-  return pushProjectThumbnailFileBytes(bytes, clean(input.name) || urlName || "thumb", response.headers.get("content-type") || "", { ...input, source_type: clean(input.source_type) || "WEB", source_url: sourceUrl });
+  return registerProjectThumbnailBytes(bytes, clean(input.name) || urlName || "thumb", response.headers.get("content-type") || "", { ...input, source_type: clean(input.source_type) || "WEB", source_url: sourceUrl });
 }
 
 export async function pushProjectThumbnailUrlBatch(projectId: string, items: ProjectThumbInput[]) {
@@ -428,6 +467,7 @@ export async function exportCompleteProjectZip(projectId: string) {
 
   const zip = zipSync(entries, { level: 6 });
   if (zip.byteLength > MAX_PRODUCTION_ZIP_BYTES) throw new Error("PRODUCTION_ZIP_LIMIT_180_MB");
+  const zipSha256 = await sha256Hex(zip);
   const fileName = productionFileName(project.name), r2Key = `projects/${pid}/production/exports/r${project.productionRevision}-${Date.now()}-${fileName}`;
   await env.BUCKET.put(r2Key, zip, { httpMetadata: { contentType: "application/zip", contentDisposition: `attachment; filename=\"${fileName.replace(/[\"\\\r\n]/g, "-")}\"` }, customMetadata: { projectId: pid, productionRevision: String(project.productionRevision), packageType: "PRODUCTION_COMPLETE" } });
   const previousKey = project.productionZipR2Key;
@@ -435,7 +475,7 @@ export async function exportCompleteProjectZip(projectId: string) {
   if (previousKey && previousKey !== r2Key && previousKey.startsWith(`projects/${pid}/production/exports/`)) await env.BUCKET.delete(previousKey).catch(() => undefined);
   await logProductionEvent(pid, "production_zip_exported", "READY", { production_revision: project.productionRevision, file_name: fileName, bytes: zip.byteLength, images: imageCount, thumbs: thumbCount, titles: titleRows.length });
   const freshPackage = await getProjectProductionPackage(pid);
-  return { project_id: pid, production_revision: project.productionRevision, production_zip_revision: project.productionRevision, r2Key, r2_key: r2Key, fileName, file_name: fileName, sizeBytes: zip.byteLength, size_bytes: zip.byteLength, images: imageCount, thumbs: thumbCount, titles: titleRows.length, package: freshPackage };
+  return { project_id: pid, production_revision: project.productionRevision, production_zip_revision: project.productionRevision, r2Key, r2_key: r2Key, fileName, file_name: fileName, sizeBytes: zip.byteLength, size_bytes: zip.byteLength, sha256: zipSha256, images: imageCount, thumbs: thumbCount, titles: titleRows.length, package: freshPackage };
 }
 
 export async function getProductionThumbFile(projectId: string, thumbId: string) {

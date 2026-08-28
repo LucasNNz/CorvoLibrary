@@ -1026,3 +1026,40 @@ export const exportJobs = sqliteTable("export_jobs", {
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
   completedAt: integer("completed_at", { mode: "timestamp_ms" }),
 });
+
+export const directMediaUploads = sqliteTable("direct_media_uploads", {
+  uploadToken: text("upload_token").primaryKey(),
+  projectId: text("project_id").notNull(),
+  kind: text("kind").notNull(),
+  r2Key: text("r2_key").notNull(),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  status: text("status").notNull().default("PENDING"),
+  metadataJson: text("metadata_json").notNull().default("{}"),
+  productionAssetId: text("production_asset_id"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  confirmedAt: integer("confirmed_at", { mode: "timestamp_ms" }),
+  error: text("error"),
+});
+
+export const downloadPackages = sqliteTable("download_packages", {
+  id: text("id").primaryKey(),
+  operationId: text("operation_id").notNull().unique(),
+  projectId: text("project_id").notNull(),
+  projectRevision: integer("project_revision").notNull(),
+  type: text("type").notNull(),
+  status: text("status").notNull(),
+  r2Key: text("r2_key"),
+  fileName: text("file_name"),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  sha256: text("sha256"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  readyAt: integer("ready_at", { mode: "timestamp_ms" }),
+  downloadedAt: integer("downloaded_at", { mode: "timestamp_ms" }),
+  machineName: text("machine_name"),
+  downloadCount: integer("download_count").notNull().default(0),
+  lastLinkExpiresAt: integer("last_link_expires_at", { mode: "timestamp_ms" }),
+  error: text("error"),
+});

@@ -73,7 +73,7 @@ test('credential configuration stays outside continuous mode', () => {
 test('self-audit and continuous-use MCP instructions are published', () => {
   assert.match(source, /tool\("obter_politica_risco_mcp"/);
   assert.match(source, /case "obter_politica_risco_mcp"/);
-  assert.match(route, /version: "6\.1\.0"/);
+  assert.match(route, /version: "6\.1\.9"/);
   assert.match(route, /baixo risco e elegíveis para uso contínuo/);
   assert.match(route, /não peça microconfirmações/);
 });
