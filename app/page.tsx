@@ -1059,9 +1059,29 @@ function LegacyDataBootstrapScreen({ info, migration, initialError, onCompleted 
   const [databaseId,setDatabaseId]=useState(info?.d1DatabaseId || "");
   const [databaseName,setDatabaseName]=useState(info?.d1DatabaseName || "");
   const [busy,setBusy]=useState(false);
-  const [message,setMessage]=useState(initialError || "");
+  const [recoveryFile,setRecoveryFile]=useState<File|null>(null);
+  const [message,setMessage]=useState(initialError?.includes("CLOUDFLARE_D1_NONE_IN_ACCOUNT") ? "" : initialError || "");
   const sourceRows=Object.values(migration?.sourceCounts || {}).reduce((sum,value)=>sum+Number(value||0),0);
   const canUseSaved=Boolean(info?.d1Configured && info?.hasD1Token);
+
+  async function importRecoveredCatalog(){
+    if(!recoveryFile)return;
+    setBusy(true);setMessage("Validando acervo recuperado e preparando o schema atual no Turso…");
+    try{
+      const raw=await recoveryFile.text();
+      const parsed=JSON.parse(raw) as {assets?:unknown[];stats?:Record<string,number>;returned?:number};
+      if(!Array.isArray(parsed.assets)||parsed.assets.length===0)throw new Error("O arquivo não contém uma coleção assets válida.");
+      const expected=Number(parsed.stats?.totalAssets??parsed.returned??parsed.assets.length);
+      if(expected!==parsed.assets.length)throw new Error(`Contagem inconsistente: arquivo declara ${expected}, mas contém ${parsed.assets.length} assets.`);
+      setMessage(`Importando ${parsed.assets.length.toLocaleString("pt-BR")} assets e preservando IDs + r2Key…`);
+      const response=await fetch("/api/migration/catalog-recovery",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(parsed)});
+      const payload=await response.json().catch(()=>null) as {ok?:boolean;imported?:number;schemaTables?:number;stats?:CatalogStats;error?:string}|null;
+      if(!response.ok||!payload?.ok)throw new Error(payload?.error||"Falha ao importar o acervo recuperado.");
+      setMessage(`Acervo restaurado: ${Number(payload.imported||0).toLocaleString("pt-BR")} assets · ${payload.schemaTables||0} tabelas do schema atual. Reabrindo a Library…`);
+      await onCompleted();
+      window.setTimeout(()=>window.location.reload(),650);
+    }catch(error){setMessage(error instanceof Error?error.message:"Falha ao importar o acervo recuperado.");setBusy(false)}
+  }
 
   async function migrateWithSavedConnection(){
     setBusy(true);setMessage("Localizando o D1 antigo e copiando os dados para o Turso…");
@@ -1086,7 +1106,7 @@ function LegacyDataBootstrapScreen({ info, migration, initialError, onCompleted 
       const saveResponse=await fetch("/api/cloudflare-connection",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({accountId:accountId.trim(),bucket:info?.bucket||"corvo-library",accessKeyId:"",secretAccessKey:"",endpoint:"",d1ApiToken:token.trim(),d1DatabaseId:databaseId.trim(),d1DatabaseName:databaseName.trim()})});
       const saved=await saveResponse.json().catch(()=>null) as (CloudflareInfo&{error?:string;code?:string;details?:string;d1Diagnostic?:{ok?:boolean;code?:string;message?:string}})|null;
       if(!saveResponse.ok||!saved){const prefix=saved?.code?`[${saved.code}] `:"";throw new Error(prefix+(saved?.error||"Não foi possível validar o D1 antigo."));}
-      setMessage("D1 localizado. Transferindo tabelas, projetos, assets, filas e configurações…");
+      setMessage("D1 localizado. Transferindo a Library completa…");
       const response=await fetch("/api/migration/d1-to-turso",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({replaceExisting:false})});
       const payload=await response.json().catch(()=>null) as D1MigrationResult|null;
       if(!response.ok||!payload?.ok)throw new Error(payload?.error||"Falha ao transferir a Library antiga.");
@@ -1096,7 +1116,7 @@ function LegacyDataBootstrapScreen({ info, migration, initialError, onCompleted 
     }catch(error){setMessage(error instanceof Error?error.message:"Falha ao recuperar a Library antiga.");setBusy(false)}
   }
 
-  return <main className="auth-shell"><form className="auth-card legacy-bootstrap-card" onSubmit={saveOriginAndMigrate}><Mark className="auth-mark"/><span>MIGRAÇÃO DOS DADOS</span><h1>Trazer Library existente</h1><p>Este Turso contém apenas o login/bootstrap. Antes de abrir o catálogo, a V61.9 precisa copiar o D1 da Library anterior. O R2 permanece onde está.</p><div className="legacy-bootstrap-summary"><div><small>DESTINO</small><strong>Turso conectado</strong></div><div><small>ORIGEM CONHECIDA</small><strong>{migration?.sourceDatabaseName||info?.d1DatabaseName||"Corvo Library / D1"}</strong></div></div>{sourceRows>0&&<p className="legacy-bootstrap-note">Origem localizada: aproximadamente <b>{sourceRows.toLocaleString("pt-BR")}</b> registros. A transferência compara as contagens antes de liberar o catálogo.</p>}{canUseSaved?<><p className="legacy-bootstrap-note">A credencial D1 necessária já está gravada. Nenhuma configuração precisa ser digitada novamente.</p><div className="legacy-bootstrap-actions"><button type="button" className="primary auth-submit" disabled={busy} onClick={()=>void migrateWithSavedConnection()}>{busy?"Transferindo…":"Trazer meus dados agora"}</button></div></>:<><p className="legacy-bootstrap-note">A referência da Library antiga foi preservada, mas a credencial secreta do D1 não veio dentro do ZIP. Crie um novo token D1 e informe-o uma única vez; depois ele fica gravado no próprio app.</p><div className="legacy-bootstrap-fields"><label>ACCOUNT ID<input autoFocus autoComplete="off" value={accountId} onChange={e=>setAccountId(e.target.value)} placeholder="Cloudflare Account ID"/></label><label>D1 DATABASE ID <small>(opcional)</small><input autoComplete="off" value={databaseId} onChange={e=>setDatabaseId(e.target.value)} placeholder="Deixe vazio para localizar"/></label><label>API TOKEN D1<input type="password" autoComplete="new-password" value={token} onChange={e=>setToken(e.target.value)} placeholder="Novo token com D1 Read"/></label></div><button className="primary auth-submit" disabled={busy||accountId.trim().length<4||token.trim().length<8}>{busy?"Recuperando Library…":"Salvar acesso e trazer meus dados"}</button></>}{message&&<div className="auth-error">{message}</div>}<small>Essa etapa não apaga o D1 antigo nem move os arquivos do R2. O catálogo só é liberado depois que o Turso tiver os dados da Library.</small></form></main>;
+  return <main className="auth-shell"><form className="auth-card legacy-bootstrap-card" onSubmit={saveOriginAndMigrate}><Mark className="auth-mark"/><span>RECUPERAÇÃO RÁPIDA · Trazer Library existente</span><h1>Restaurar o acervo da Library</h1><p>Use o JSON recuperado da Library antiga. A FIX11 cria o schema atual no Turso, restaura o catálogo com os mesmos IDs e <code>r2Key</code> e deixa filas/leases/execuções de teste antigas para trás. O R2 não é copiado nem apagado.</p><div className="legacy-bootstrap-summary"><div><small>DESTINO</small><strong>Turso conectado</strong></div><div><small>MODO</small><strong>Migração limpa do acervo</strong></div></div><p className="legacy-bootstrap-note"><b>Recomendado para voltar à produção rápido.</b> O arquivo esperado é <code>corvo-library-assets.json</code>. A importação é idempotente e valida as contagens antes de liberar o catálogo.</p><div className="legacy-bootstrap-fields"><label>ARQUIVO DO ACERVO<input type="file" accept="application/json,.json" disabled={busy} onChange={e=>setRecoveryFile(e.target.files?.[0]||null)}/></label></div>{recoveryFile&&<p className="legacy-bootstrap-note">Selecionado: <b>{recoveryFile.name}</b> · {(recoveryFile.size/1024/1024).toFixed(2)} MB</p>}<button type="button" className="primary auth-submit" disabled={busy||!recoveryFile} onClick={()=>void importRecoveredCatalog()}>{busy?"Importando…":"Restaurar acervo e abrir Library"}</button><small>Preserva: assets, status, QA, universos, tags, hashes, origem, contadores de uso, timestamps e referências R2. Não recria histórico experimental de filas, leases, candidatos e execuções antigas.</small><details className="legacy-bootstrap-advanced"><summary>Migração integral via D1 (alternativa)</summary>{sourceRows>0&&<p className="legacy-bootstrap-note">Origem localizada: aproximadamente <b>{sourceRows.toLocaleString("pt-BR")}</b> registros.</p>}{canUseSaved?<div className="legacy-bootstrap-actions"><button type="button" className="secondary auth-submit" disabled={busy} onClick={()=>void migrateWithSavedConnection()}>{busy?"Transferindo…":"Tentar D1 salvo"}</button></div>:<><p className="legacy-bootstrap-note">Use somente se um D1 antigo estiver acessível por API Cloudflare.</p><div className="legacy-bootstrap-fields"><label>ACCOUNT ID<input autoComplete="off" value={accountId} onChange={e=>setAccountId(e.target.value)} placeholder="Cloudflare Account ID"/></label><label>D1 DATABASE ID <small>(opcional)</small><input autoComplete="off" value={databaseId} onChange={e=>setDatabaseId(e.target.value)} placeholder="Deixe vazio para localizar"/></label><label>API TOKEN D1<input type="password" autoComplete="new-password" value={token} onChange={e=>setToken(e.target.value)} placeholder="Token com D1 Read"/></label></div><button className="secondary auth-submit" disabled={busy||accountId.trim().length<4||token.trim().length<8}>{busy?"Recuperando…":"Tentar migração integral"}</button></>}</details>{message&&<div className="auth-error">{message}</div>}<small>Depois da restauração, conecte uma nova chave ao mesmo bucket R2 em Configurações. Nenhum objeto do R2 é movido nesta etapa.</small></form></main>;
 }
 
 function AuthLoading() {
