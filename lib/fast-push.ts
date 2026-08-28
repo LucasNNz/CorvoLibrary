@@ -156,6 +156,13 @@ function candidateHost(sourceUrl: string) {
 
 async function bridgeFastPushToCanonicalPending(candidateInput: typeof fastPushCandidates.$inferSelect) {
   if (!candidateInput.r2Key || !candidateInput.sha256 || !candidateInput.mimeType) return { linked:false, reason:"CANDIDATE_NOT_MATERIALIZED" };
+  // Freeze the materialization-critical fields immediately after the guard.
+  // `candidate` is mutable later in this function, so relying on narrowing from
+  // candidateInput through that mutable alias makes Drizzle/TS widen them back
+  // to `string | null`. These constants remain concrete `string`s.
+  const materializedR2Key: string = candidateInput.r2Key;
+  const materializedSha256: string = candidateInput.sha256;
+  const materializedMimeType: string = candidateInput.mimeType;
   const db = getDb();
   let candidate = candidateInput;
   const resolution = await resolveFastPushProjectItem(candidate);
@@ -176,9 +183,9 @@ async function bridgeFastPushToCanonicalPending(candidateInput: typeof fastPushC
   const batchId = await stableId("MATFPB", candidate.operationId);
   const matItemId = await stableId("MATFPI", candidate.id);
   const matCandidateId = await stableId("MATFPC", candidate.id);
-  const matFileId = await stableId("MATFPF", `${candidate.id}\n${candidate.sha256}`);
+  const matFileId = await stableId("MATFPF", `${candidate.id}\n${materializedSha256}`);
   const date = now();
-  const targetName = safeName(candidate.targetName || item.targetFile || item.itemKey || `${candidate.id}.${extForMime(candidate.mimeType)}`);
+  const targetName = safeName(candidate.targetName || item.targetFile || item.itemKey || `${candidate.id}.${extForMime(materializedMimeType)}`);
   const sourceUrl = candidate.sourceUrl || `fast-push://${candidate.id}`;
   const sourceHost = candidateHost(sourceUrl);
 
@@ -205,14 +212,15 @@ async function bridgeFastPushToCanonicalPending(candidateInput: typeof fastPushC
   await db.insert(materializationCandidates).values({
     id:matCandidateId, itemDbId:matItemId, priority:candidate.priority || 1, source:candidate.sourceType || "FAST_PUSH", originalUrl:sourceUrl,
     resolvedUrl:sourceUrl, host:sourceHost, adapter:"fast-push", status:"MATERIALIZED", failureReason:null, attempts:1,
-    httpStatus:sourceUrl.startsWith("http") ? 200 : null, contentType:candidate.mimeType, contentLength:candidate.sizeBytes || 0, redirectsCount:0, createdAt:date, updatedAt:date,
-  }).onConflictDoUpdate({ target:materializationCandidates.id, set:{ source:candidate.sourceType || "FAST_PUSH", originalUrl:sourceUrl, resolvedUrl:sourceUrl, host:sourceHost, status:"MATERIALIZED", failureReason:null, contentType:candidate.mimeType, contentLength:candidate.sizeBytes || 0, updatedAt:date } });
+    httpStatus:sourceUrl.startsWith("http") ? 200 : null, contentType:materializedMimeType, contentLength:candidate.sizeBytes || 0, redirectsCount:0, createdAt:date, updatedAt:date,
+  }).onConflictDoUpdate({ target:materializationCandidates.id, set:{ source:candidate.sourceType || "FAST_PUSH", originalUrl:sourceUrl, resolvedUrl:sourceUrl, host:sourceHost, status:"MATERIALIZED", failureReason:null, contentType:materializedMimeType, contentLength:candidate.sizeBytes || 0, updatedAt:date } });
 
-  await db.insert(materializationFiles).values({
-    id:matFileId, itemDbId:matItemId, candidateId:matCandidateId, r2Key:candidate.r2Key, mimeType:candidate.mimeType, sizeBytes:candidate.sizeBytes || 0,
-    width:null, height:null, sha256:candidate.sha256, originalMimeType:candidate.mimeType, originalSha256:candidate.sha256,
+  const materializationFileRow: typeof materializationFiles.$inferInsert = {
+    id:matFileId, itemDbId:matItemId, candidateId:matCandidateId, r2Key:materializedR2Key, mimeType:materializedMimeType, sizeBytes:candidate.sizeBytes || 0,
+    width:null, height:null, sha256:materializedSha256, originalMimeType:materializedMimeType, originalSha256:materializedSha256,
     conversionType:null, sourceFileId:null, technicalOperation:null, technicalParameters:null, technicalStatus:"TECHNICAL_OK", finalAssetId:candidate.assetId || null, createdAt:date,
-  }).onConflictDoNothing();
+  };
+  await db.insert(materializationFiles).values(materializationFileRow).onConflictDoNothing();
 
   const bridged = await bridgeMaterializationToSupervisor(matItemId, { projectId:candidate.projectId, itemId:item.id });
   if (!bridged.linked) {

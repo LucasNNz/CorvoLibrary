@@ -97,3 +97,10 @@ A V61.9 consolida THUMB e pacote final sem transporte de arquivos pelo chat. THU
 ## FIX5 — Drizzle Type Sweep
 
 Corrige o lote de erros de type-check Drizzle revelado pelo build real da Vercel: campos QA vindos de `materialization_files`, batches heterogêneos, narrowing de SHA no FAST PUSH e batches dinâmicos do Supervisor.
+
+## FIX6 — FAST PUSH / DRIZZLE NARROWING
+
+- `bridgeFastPushToCanonicalPending` congela `r2Key`, `sha256` e `mimeType` em strings não-nulas após o guard.
+- `materialization_files` usa um registro explicitamente tipado como `typeof materializationFiles.$inferInsert` antes de `.values()`.
+- Isso elimina o widening `string | null` e o fallback incorreto para o overload array do Drizzle.
+- Regressão específica adicionada; suíte local: 143/143.

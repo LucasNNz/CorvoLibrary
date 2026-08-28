@@ -1,0 +1,16 @@
+CORVO LIBRARY V61.9 — FIX6 FAST PUSH DRIZZLE NARROWING
+Data: 2026-08-28
+
+Correções desta revisão:
+1. bridgeFastPushToCanonicalPending congela r2Key, sha256 e mimeType em constantes string logo após validar materialização.
+2. extForMime deixa de receber candidate.mimeType nullable.
+3. materialization_files deixa de receber r2Key/mimeType/sha256 diretamente do alias mutável candidate.
+4. O row de materialization_files é tipado explicitamente como typeof materializationFiles.$inferInsert antes do db.insert().values().
+5. Adicionada regressão específica para impedir retorno do widening string|null e do overload ambíguo de Drizzle.
+
+Validação local disponível neste ambiente:
+- 143/143 testes: PASS
+- scripts/validate-vercel-migration.mjs: PASS
+
+Observação:
+O typecheck completo com os node_modules reais continua sendo validado pelo deploy Vercel, porque o registry npm não está acessível a partir deste ambiente de preparação.
