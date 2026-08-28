@@ -1,6 +1,19 @@
 const API = "https://api.cloudflare.com/client/v4";
 
-type CloudflareEnvelope<T> = { success?: boolean; result?: T; errors?: Array<{ code?: number; message?: string }> };
+type CloudflareEnvelope<T> = { success?: boolean; result?: T; errors?: Array<{ code?: number; message?: string; documentation_url?: string }> };
+
+export class CloudflareAdminError extends Error {
+  code: string;
+  httpStatus?: number;
+  details?: string;
+  constructor(code: string, message: string, options: { httpStatus?: number; details?: string } = {}) {
+    super(message);
+    this.name = "CloudflareAdminError";
+    this.code = code;
+    this.httpStatus = options.httpStatus;
+    this.details = options.details;
+  }
+}
 export type D1DatabaseSummary = { id: string; name: string; createdAt?: string };
 
 async function cf<T>(accountId: string, apiToken: string, path: string, init: RequestInit = {}) {
@@ -16,7 +29,11 @@ async function cf<T>(accountId: string, apiToken: string, path: string, init: Re
   const body = await response.json().catch(() => ({})) as CloudflareEnvelope<T>;
   if (!response.ok || body.success === false) {
     const reason = body.errors?.map((error) => error.message || error.code).filter(Boolean).join("; ") || `HTTP ${response.status}`;
-    throw new Error(`CLOUDFLARE_API_ERROR:${reason}`);
+    const code = response.status === 401 ? "CLOUDFLARE_TOKEN_INVALID"
+      : response.status === 403 ? "CLOUDFLARE_TOKEN_FORBIDDEN"
+      : response.status === 404 ? "CLOUDFLARE_RESOURCE_NOT_FOUND"
+      : "CLOUDFLARE_API_ERROR";
+    throw new CloudflareAdminError(code, reason, { httpStatus: response.status, details: JSON.stringify(body.errors || []) });
   }
   return body.result as T;
 }
@@ -41,29 +58,60 @@ export async function getD1TableNames(accountId: string, apiToken: string, datab
 
 export async function resolveCorvoD1Database(accountId: string, apiToken: string, requestedId = "", requestedName = "") {
   const databases = await listD1Databases(accountId, apiToken);
-  if (!databases.length) throw new Error("CLOUDFLARE_D1_NOT_FOUND");
+  if (!databases.length) {
+    throw new CloudflareAdminError(
+      "CLOUDFLARE_D1_NONE_IN_ACCOUNT",
+      "O token é válido, mas nenhuma base D1 foi encontrada nesta conta Cloudflare."
+    );
+  }
   if (requestedId) {
     const match = databases.find((database) => database.id === requestedId);
-    if (!match) throw new Error("CLOUDFLARE_D1_ID_NOT_FOUND");
+    if (!match) throw new CloudflareAdminError("CLOUDFLARE_D1_ID_NOT_FOUND", "O Database ID informado não existe nesta conta Cloudflare.");
     await getD1TableNames(accountId, apiToken, match.id);
     return match;
   }
   const byName = requestedName ? databases.filter((database) => database.name === requestedName) : databases;
-  if (!byName.length) throw new Error("CLOUDFLARE_D1_NAME_NOT_FOUND");
+  if (!byName.length) throw new CloudflareAdminError("CLOUDFLARE_D1_NAME_NOT_FOUND", "Nenhum D1 com o nome informado foi encontrado nesta conta.");
   if (byName.length === 1) {
-    await getD1TableNames(accountId, apiToken, byName[0].id);
+    const names = await getD1TableNames(accountId, apiToken, byName[0].id);
+    const signatures = ["assets", "automatic_projects", "automatic_project_items", "settings"];
+    if (!signatures.every((table) => names.has(table))) {
+      throw new CloudflareAdminError(
+        "CLOUDFLARE_D1_CORVO_SIGNATURE_NOT_FOUND",
+        `O D1 ${byName[0].name} foi encontrado, mas não contém as tabelas esperadas da Corvo Library.`
+      );
+    }
     return byName[0];
   }
   const signatures = ["assets", "automatic_projects", "automatic_project_items", "settings"];
+  const matches: D1DatabaseSummary[] = [];
+  const probeErrors: string[] = [];
   for (const database of byName) {
     try {
       const names = await getD1TableNames(accountId, apiToken, database.id);
-      if (signatures.every((table) => names.has(table))) return database;
-    } catch {
-      // Keep scanning. A token may have access to more than one D1 database.
+      if (signatures.every((table) => names.has(table))) matches.push(database);
+    } catch (error) {
+      probeErrors.push(`${database.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  throw new Error("CLOUDFLARE_D1_AMBIGUOUS");
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    throw new CloudflareAdminError(
+      "CLOUDFLARE_D1_MULTIPLE_CORVO_DATABASES",
+      `Mais de um D1 parece ser da Corvo Library (${matches.map((db) => db.name).join(", ")}). Informe o Database ID.`
+    );
+  }
+  if (probeErrors.length === byName.length) {
+    throw new CloudflareAdminError(
+      "CLOUDFLARE_D1_PROBE_FAILED",
+      "O token conseguiu listar D1, mas não conseguiu consultar as tabelas de nenhum banco. Verifique a permissão D1 Read.",
+      { details: probeErrors.join(" | ") }
+    );
+  }
+  throw new CloudflareAdminError(
+    "CLOUDFLARE_D1_CORVO_NOT_FOUND",
+    `Foram encontrados ${byName.length} banco(s) D1 nesta conta, mas nenhum possui a assinatura da Corvo Library. O D1 antigo pode estar em outra conta ou ser gerenciado pelo Sites.`
+  );
 }
 
 export async function queryD1(accountId: string, apiToken: string, databaseId: string, sql: string) {

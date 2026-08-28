@@ -1084,8 +1084,8 @@ function LegacyDataBootstrapScreen({ info, migration, initialError, onCompleted 
     setBusy(true);setMessage("Salvando acesso temporário ao D1 antigo…");
     try{
       const saveResponse=await fetch("/api/cloudflare-connection",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({accountId:accountId.trim(),bucket:info?.bucket||"corvo-library",accessKeyId:"",secretAccessKey:"",endpoint:"",d1ApiToken:token.trim(),d1DatabaseId:databaseId.trim(),d1DatabaseName:databaseName.trim()})});
-      const saved=await saveResponse.json().catch(()=>null) as (CloudflareInfo&{error?:string})|null;
-      if(!saveResponse.ok||!saved)throw new Error(saved?.error||"Não foi possível validar o D1 antigo.");
+      const saved=await saveResponse.json().catch(()=>null) as (CloudflareInfo&{error?:string;code?:string;details?:string;d1Diagnostic?:{ok?:boolean;code?:string;message?:string}})|null;
+      if(!saveResponse.ok||!saved){const prefix=saved?.code?`[${saved.code}] `:"";throw new Error(prefix+(saved?.error||"Não foi possível validar o D1 antigo."));}
       setMessage("D1 localizado. Transferindo tabelas, projetos, assets, filas e configurações…");
       const response=await fetch("/api/migration/d1-to-turso",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({replaceExisting:false})});
       const payload=await response.json().catch(()=>null) as D1MigrationResult|null;
