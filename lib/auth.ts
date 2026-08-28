@@ -4,6 +4,7 @@ import { getDb } from "../db";
 import { settings } from "../db/schema";
 import { ensureBootstrapSettingsTable } from "./bootstrap-db";
 import { ensureLibraryMasterKey, rewrapLibraryMasterKeyForPassword } from "./master-key";
+import { toArrayBuffer, utf8ArrayBuffer } from "./web-crypto";
 
 const AUTH_KEY = "library_auth_v1";
 const SESSION_PREFIX = "library_auth_session:";
@@ -17,8 +18,8 @@ function b64(bytes: Uint8Array) { return Buffer.from(bytes).toString("base64"); 
 function unb64(value: string) { return Uint8Array.from(Buffer.from(value, "base64")); }
 
 async function derivePassword(password: string, salt: Uint8Array, iterations = PASSWORD_ITERATIONS) {
-  const raw = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  return new Uint8Array(await crypto.subtle.deriveBits({ name:"PBKDF2", salt, iterations, hash:"SHA-256" }, raw, 256));
+  const raw = await crypto.subtle.importKey("raw", utf8ArrayBuffer(password), "PBKDF2", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name:"PBKDF2", salt: toArrayBuffer(salt), iterations, hash:"SHA-256" }, raw, 256));
 }
 
 function normalizeUsername(value: string) {

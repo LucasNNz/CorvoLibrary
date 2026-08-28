@@ -7,6 +7,7 @@
  * readable during migration when its historical bootstrap key is available.
  */
 import { getLibraryMasterKey } from "./master-key";
+import { toArrayBuffer, utf8ArrayBuffer } from "./web-crypto";
 
 function legacySourceSecret() {
   const legacy = process.env.CORVO_CONFIG_ENCRYPTION_KEY?.trim() || "";
@@ -20,20 +21,20 @@ function bytesToBase64(bytes: Uint8Array) { return Buffer.from(bytes).toString("
 function base64ToBytes(value: string) { return Uint8Array.from(Buffer.from(value, "base64")); }
 
 async function keyFromBytes(bytes: Uint8Array) {
-  return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", toArrayBuffer(bytes), "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
 async function legacyCryptoKey() {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(legacySourceSecret()));
+  const digest = await crypto.subtle.digest("SHA-256", utf8ArrayBuffer(legacySourceSecret()));
   return keyFromBytes(new Uint8Array(digest));
 }
 
 export async function encryptPersistedConfig(value: unknown) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: toArrayBuffer(iv) },
     await keyFromBytes(await getLibraryMasterKey()),
-    new TextEncoder().encode(JSON.stringify(value)),
+    utf8ArrayBuffer(JSON.stringify(value)),
   );
   return `v2.${bytesToBase64(iv)}.${bytesToBase64(new Uint8Array(encrypted))}`;
 }
@@ -46,7 +47,7 @@ export async function decryptPersistedConfig<T>(value: string): Promise<T> {
   const encryptedValue = (v2 || v1) ? parts[2] : parts[1];
   if (!ivValue || !encryptedValue) throw new Error("PERSISTED_CONFIG_INVALID");
   const key = v2 ? await keyFromBytes(await getLibraryMasterKey()) : await legacyCryptoKey();
-  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: base64ToBytes(ivValue) }, key, base64ToBytes(encryptedValue));
+  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: toArrayBuffer(base64ToBytes(ivValue)) }, key, toArrayBuffer(base64ToBytes(encryptedValue)));
   return JSON.parse(new TextDecoder().decode(decrypted)) as T;
 }
 

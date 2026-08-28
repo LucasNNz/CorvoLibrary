@@ -1,4 +1,5 @@
 import { env } from "./platform/runtime";
+import { toArrayBuffer } from "./web-crypto";
 import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { strToU8, zipSync } from "fflate";
 import { getDb } from "../db";
@@ -113,7 +114,7 @@ function bytesToBase64(bytes: Uint8Array) {
 }
 
 async function sha256Hex(bytes: Uint8Array) {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes)));
   return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 

@@ -1,4 +1,5 @@
 import { env } from "./platform/runtime";
+import { toArrayBuffer } from "./web-crypto";
 import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { assetUsage, assets, automaticProjectItems, automaticProjects, fastPushCandidates, materializationBatches, materializationCandidates, materializationFiles, materializationItems, projectProductionAssets, supervisorDecisionQueue, supervisorProjectCandidates } from "../db/schema";
@@ -82,7 +83,7 @@ function looksLike(bytes: Uint8Array, mime: string) {
 }
 
 async function sha256Hex(bytes: Uint8Array) {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes)));
   return Array.from(digest, (value) => value.toString(16).padStart(2, "0")).join("");
 }
 

@@ -1,4 +1,5 @@
 import { createClient, type Client } from "@libsql/client";
+import { toArrayBuffer, utf8ArrayBuffer } from "./web-crypto";
 
 const MASTER_KEY_SETTING = "library_master_key_v1";
 
@@ -32,18 +33,18 @@ async function ensureSettings() {
 }
 
 async function sha256Bytes(value: string) {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", utf8ArrayBuffer(value)));
 }
 
 async function aesKeyFromSecret(secret: string, purpose: string) {
   const material = await sha256Bytes(`corvo-library:${purpose}:${secret}`);
-  return crypto.subtle.importKey("raw", material, "AES-GCM", false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", toArrayBuffer(material), "AES-GCM", false, ["encrypt", "decrypt"]);
 }
 
 async function aesKeyFromPassword(password: string, salt: Uint8Array) {
-  const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  const material = await crypto.subtle.importKey("raw", utf8ArrayBuffer(password), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt, iterations: 210_000, hash: "SHA-256" },
+    { name: "PBKDF2", salt: toArrayBuffer(salt), iterations: 210_000, hash: "SHA-256" },
     material,
     { name: "AES-GCM", length: 256 },
     false,
@@ -53,12 +54,12 @@ async function aesKeyFromPassword(password: string, salt: Uint8Array) {
 
 async function wrap(raw: Uint8Array, key: CryptoKey): Promise<WrappedValue> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, raw);
+  const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv: toArrayBuffer(iv) }, key, toArrayBuffer(raw));
   return { iv: b64(iv), data: b64(new Uint8Array(encrypted)) };
 }
 
 async function unwrap(value: WrappedValue, key: CryptoKey) {
-  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(value.iv) }, key, unb64(value.data));
+  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv: toArrayBuffer(unb64(value.iv)) }, key, toArrayBuffer(unb64(value.data)));
   return new Uint8Array(decrypted);
 }
 

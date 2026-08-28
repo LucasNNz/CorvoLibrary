@@ -1,4 +1,5 @@
 import { env } from "./platform/runtime";
+import { toArrayBuffer } from "./web-crypto";
 import sharp from "sharp";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { strToU8, zipSync } from "fflate";
@@ -77,7 +78,7 @@ async function stableId(prefix: string, value: string) {
 }
 
 async function sha256(bytes: Uint8Array) {
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const digest = await crypto.subtle.digest("SHA-256", toArrayBuffer(bytes));
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
