@@ -3,25 +3,43 @@ import { getMcpCodeFromRequest, validMcpCode } from "../../lib/mcp-access";
 import { isMcpFileResourceDeliveryEnabled } from "../../lib/industrial-supervisor";
 import { wakeDataPlane } from "../../lib/data-plane";
 
-const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, accept, mcp-protocol-version, mcp-session-id, last-event-id", "access-control-expose-headers": "mcp-session-id, mcp-protocol-version", "access-control-allow-methods": "POST, GET, DELETE, OPTIONS" };
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, accept, mcp-protocol-version, mcp-session-id, last-event-id", "access-control-expose-headers": "mcp-session-id, mcp-protocol-version", "access-control-allow-methods": "POST, GET, HEAD, DELETE, OPTIONS", "x-content-type-options": "nosniff", "vary": "accept" };
 const response = (body: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(body), { status, headers: { ...headers, ...extraHeaders } });
 const error = (id: unknown, code: number, message: string) => response({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
 
 export async function OPTIONS() { return new Response(null, { status: 204, headers }); }
 
+// ChatGPT custom apps can be configured with Authentication = None.
+// The unguessable /c/<code>/mcp URL is a revocable capability URL, not an
+// interactive HTTP authentication scheme. HEAD/GET intentionally never
+// redirect to the Library login and never emit WWW-Authenticate.
+export async function HEAD() {
+  return new Response(null, { status: 204, headers: { ...headers, "x-corvo-mcp": "ready", allow: "POST, GET, HEAD, OPTIONS" } });
+}
+
 export async function GET(request: Request) {
-  if (!(await validMcpCode(request))) return response({ error: "Código MCP inválido ou revogado." }, 401);
-  return response({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Este servidor MCP stateless aceita mensagens por POST." } }, 405, { allow: "POST, OPTIONS" });
+  if (!(await validMcpCode(request))) return response({ error: "MCP endpoint not found." }, 404, { "x-corvo-mcp": "invalid-capability" });
+  return response({
+    ok: true,
+    name: "corvo-library",
+    transport: "streamable_http",
+    authentication: "none",
+    message: "MCP ready. Send JSON-RPC messages with POST.",
+  }, 200, { allow: "POST, GET, HEAD, OPTIONS", "x-corvo-mcp": "ready" });
 }
 
 export async function DELETE(request: Request) {
-  if (!(await validMcpCode(request))) return response({ error: "Código MCP inválido ou revogado." }, 401);
-  return response({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Sessões não são mantidas neste servidor." } }, 405, { allow: "POST, OPTIONS" });
+  if (!(await validMcpCode(request))) return response({ error: "MCP endpoint not found." }, 404, { "x-corvo-mcp": "invalid-capability" });
+  return response({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Sessões não são mantidas neste servidor." } }, 405, { allow: "POST, GET, HEAD, OPTIONS" });
 }
 
 export async function POST(request: Request) {
   const authStart = Date.now();
-  if (!(await validMcpCode(request))) return response({ error: "Código MCP inválido ou revogado." }, 401);
+  if (!(await validMcpCode(request))) return response({ error: "MCP endpoint not found." }, 404, { "x-corvo-mcp": "invalid-capability" });
   const authMs = Date.now() - authStart, parseStart = Date.now();
   let message: Record<string, unknown>;
   try { message = await request.json() as Record<string, unknown>; } catch { return error(null, -32700, "JSON inválido."); }

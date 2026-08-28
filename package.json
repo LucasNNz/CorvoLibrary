@@ -1,6 +1,6 @@
 {
   "name": "corvo-library",
-  "version": "0.1.0-vercel.9-fix7-first-use-turso-bootstrap",
+  "version": "0.1.0-vercel.9-fix9-legacy-data-bootstrap",
   "private": true,
   "engines": {
     "node": "24.x"

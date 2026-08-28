@@ -1,1 +1,1 @@
-export { DELETE, GET, OPTIONS, POST } from "../../../mcp/route";
+export { DELETE, GET, HEAD, OPTIONS, POST } from "../../../mcp/route";

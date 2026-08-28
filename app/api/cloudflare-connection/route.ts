@@ -28,7 +28,10 @@ export async function PUT(request: Request) {
     d1DatabaseName: clean(payload.d1DatabaseName) || currentConnection?.d1DatabaseName || inherited?.d1DatabaseName || "",
   };
 
-  const hasAnyR2 = Boolean(connection.bucket || connection.accessKeyId || connection.secretAccessKey || connection.endpoint);
+  // A known/inherited bucket name alone must not force R2 credentials during the
+  // first D1 migration. This lets the operator provide only Account ID + D1 token
+  // to recover the existing Library before rotating R2 credentials.
+  const hasAnyR2 = Boolean(connection.accessKeyId || connection.secretAccessKey || connection.endpoint);
   if (hasAnyR2) {
     if (!connection.accountId || !connection.bucket || !connection.accessKeyId || !connection.secretAccessKey) {
       return Response.json({ error: "Para salvar o R2, preencha Account ID, Bucket, Access Key ID e Secret Access Key." }, { status: 400, headers });

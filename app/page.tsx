@@ -13,7 +13,7 @@ type Asset = {
 type RequestRow = { id: string; project: string; itemCount: number; status: string; createdAt: string | number | Date };
 type CatalogStats = { totalAssets:number; catalogAssets:number; universes:number; pending:number; rejected:number; reused:number; totalUses:number };
 
-type McpInfo = { code: string; mcp_url: string; plugin_name: string; description: string; transport: string; auth: string };
+type McpInfo = { code: string; mcp_url: string; plugin_name: string; description: string; transport: string; auth: string; authentication_type?: string; deployment_requirement?: string };
 type CloudflareInfo = { configured: boolean; accountId: string; bucket: string; accessKeyId: string; endpoint: string; hasSecret: boolean; d1Configured: boolean; d1DatabaseId: string; d1DatabaseName: string; hasD1Token: boolean; needsReconfigure?: boolean; encryptionBootstrap?: string; updatedAt: string | null; bindingActive?: boolean; configReference?: string; inheritedProfile?: boolean };
 type CloudflareForm = { accountId: string; bucket: string; accessKeyId: string; secretAccessKey: string; endpoint: string; d1ApiToken: string; d1DatabaseId: string; d1DatabaseName: string };
 type D1MigrationInfo = { ready:boolean; sourceDatabaseId:string; sourceDatabaseName:string; sourceCounts:Record<string,number>; targetCounts:Record<string,number>; targetHasApplicationData:boolean; targetTables:string[]; rollbackAvailable?:boolean; backupKey?:string; lastMigrationAt?:string; error?:string };
@@ -214,6 +214,9 @@ export default function Home() {
   const [mcpError, setMcpError] = useState("");
   const [toast, setToast] = useState("");
   const [authStatus, setAuthStatus] = useState<AuthStatus>({ loading:true, configured:false, authenticated:false, username:"", bootstrapRequired:false, bootstrapMissing:[], marketplaceUrl:"https://vercel.com/marketplace/tursocloud" });
+  const [legacyMigration, setLegacyMigration] = useState<D1MigrationInfo | null>(null);
+  const [legacyMigrationLoading, setLegacyMigrationLoading] = useState(true);
+  const [legacyMigrationError, setLegacyMigrationError] = useState("");
   const [bulkProject, setBulkProject] = useState("");
   const [bulkText, setBulkText] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
@@ -239,8 +242,35 @@ export default function Home() {
 
   useEffect(() => { void refreshAuthStatus(); }, [refreshAuthStatus]);
 
-  useEffect(() => {
+  const refreshLegacyMigration = useCallback(async () => {
     if (!authStatus.authenticated) return;
+    setLegacyMigrationLoading(true);
+    setLegacyMigrationError("");
+    try {
+      const [cloudflareResponse, migrationResponse] = await Promise.all([
+        fetch("/api/cloudflare-connection", { cache:"no-store" }),
+        fetch("/api/migration/d1-to-turso", { cache:"no-store" }),
+      ]);
+      const cloudflare = await cloudflareResponse.json().catch(() => null) as CloudflareInfo | null;
+      if (cloudflareResponse.ok && cloudflare) { setCloudflareInfo(cloudflare); setConnected(Boolean(cloudflare.configured)); }
+      const migration = await migrationResponse.json().catch(() => null) as D1MigrationInfo | null;
+      if (!migrationResponse.ok || !migration) throw new Error(migration?.error || `Falha ao verificar dados antigos (${migrationResponse.status})`);
+      setLegacyMigration(migration);
+    } catch (error) {
+      setLegacyMigrationError(error instanceof Error ? error.message : String(error));
+      setLegacyMigration({ ready:false, sourceDatabaseId:"", sourceDatabaseName:"", sourceCounts:{}, targetCounts:{}, targetHasApplicationData:false, targetTables:[], error:error instanceof Error ? error.message : String(error) });
+    } finally {
+      setLegacyMigrationLoading(false);
+    }
+  }, [authStatus.authenticated]);
+
+  useEffect(() => { if (authStatus.authenticated) void refreshLegacyMigration(); }, [authStatus.authenticated, refreshLegacyMigration]);
+
+  const legacyMigrationRequired = authStatus.authenticated && !legacyMigrationLoading && Boolean(legacyMigration) && !legacyMigration!.targetHasApplicationData && !legacyMigration!.lastMigrationAt;
+  const libraryDataReady = authStatus.authenticated && !legacyMigrationLoading && Boolean(legacyMigration) && !legacyMigrationRequired;
+
+  useEffect(() => {
+    if (!libraryDataReady) return;
     Promise.all([
       fetch("/api/assets", { cache: "no-store" }).then((r) => r.ok ? r.json() : { assets: [] }),
       fetch("/api/requests", { cache: "no-store" }).then((r) => r.ok ? r.json() : { requests: [] }),
@@ -272,7 +302,7 @@ export default function Home() {
       .then((response) => response.ok ? response.json() : null)
       .then((value: McpInfo | null) => { if (value) setMcpInfo(value); })
       .catch(() => undefined);
-  }, [authStatus.authenticated]);
+  }, [libraryDataReady]);
 
   const universes = useMemo(() => ["Todos os universos", ...Array.from(new Set(assets.map((a) => a.universe)))], [assets]);
   const filtered = useMemo(() => assets.filter((asset) => {
@@ -467,6 +497,8 @@ export default function Home() {
   if (authStatus.loading) return <AuthLoading />;
   if (authStatus.bootstrapRequired) return <DatabaseBootstrapScreen error={authStatus.bootstrapError} missing={authStatus.bootstrapMissing} marketplaceUrl={authStatus.marketplaceUrl} onRetry={refreshAuthStatus} />;
   if (!authStatus.authenticated) return <AuthScreen configured={authStatus.configured} suggestedUsername={authStatus.username} onSubmit={completeAuth} />;
+  if (legacyMigrationLoading) return <main className="auth-shell"><section className="auth-card legacy-bootstrap-card"><Mark className="auth-mark"/><span>RECUPERANDO LIBRARY</span><h1>Verificando dados existentes</h1><p>Conferindo se este Turso já recebeu a biblioteca anterior.</p></section></main>;
+  if (legacyMigrationRequired) return <LegacyDataBootstrapScreen info={cloudflareInfo} migration={legacyMigration} initialError={legacyMigrationError} onCompleted={refreshLegacyMigration} />;
 
   return (
     <main className="app-shell">
@@ -1021,6 +1053,52 @@ function AutomaticCollectionLegacy({ onFlash }: { onFlash: (message: string) => 
 }
 
 
+function LegacyDataBootstrapScreen({ info, migration, initialError, onCompleted }: { info:CloudflareInfo|null; migration:D1MigrationInfo|null; initialError:string; onCompleted:()=>Promise<void> }) {
+  const [accountId,setAccountId]=useState(info?.accountId || "");
+  const [token,setToken]=useState("");
+  const [databaseId,setDatabaseId]=useState(info?.d1DatabaseId || "");
+  const [databaseName,setDatabaseName]=useState(info?.d1DatabaseName || "");
+  const [busy,setBusy]=useState(false);
+  const [message,setMessage]=useState(initialError || "");
+  const sourceRows=Object.values(migration?.sourceCounts || {}).reduce((sum,value)=>sum+Number(value||0),0);
+  const canUseSaved=Boolean(info?.d1Configured && info?.hasD1Token);
+
+  async function migrateWithSavedConnection(){
+    setBusy(true);setMessage("Localizando o D1 antigo e copiando os dados para o Turso…");
+    try{
+      const preflightResponse=await fetch("/api/migration/d1-to-turso",{cache:"no-store"});
+      const preflight=await preflightResponse.json().catch(()=>null) as D1MigrationInfo|null;
+      if(!preflightResponse.ok||!preflight?.ready)throw new Error(preflight?.error||"Não foi possível localizar o D1 antigo.");
+      const response=await fetch("/api/migration/d1-to-turso",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({replaceExisting:false})});
+      const payload=await response.json().catch(()=>null) as D1MigrationResult|null;
+      if(!response.ok||!payload?.ok)throw new Error(payload?.error||"Falha ao transferir a Library antiga.");
+      setMessage(`Migração concluída. ${Object.values(payload.targetCounts||{}).reduce((sum,value)=>sum+Number(value||0),0).toLocaleString("pt-BR")} registros conferidos.`);
+      await onCompleted();
+      window.setTimeout(()=>window.location.reload(),650);
+    }catch(error){setMessage(error instanceof Error?error.message:"Falha ao transferir a Library antiga.");setBusy(false)}
+  }
+
+  async function saveOriginAndMigrate(event:React.FormEvent){
+    event.preventDefault();
+    if(!accountId.trim()||!token.trim())return;
+    setBusy(true);setMessage("Salvando acesso temporário ao D1 antigo…");
+    try{
+      const saveResponse=await fetch("/api/cloudflare-connection",{method:"PUT",headers:{"content-type":"application/json"},body:JSON.stringify({accountId:accountId.trim(),bucket:info?.bucket||"corvo-library",accessKeyId:"",secretAccessKey:"",endpoint:"",d1ApiToken:token.trim(),d1DatabaseId:databaseId.trim(),d1DatabaseName:databaseName.trim()})});
+      const saved=await saveResponse.json().catch(()=>null) as (CloudflareInfo&{error?:string})|null;
+      if(!saveResponse.ok||!saved)throw new Error(saved?.error||"Não foi possível validar o D1 antigo.");
+      setMessage("D1 localizado. Transferindo tabelas, projetos, assets, filas e configurações…");
+      const response=await fetch("/api/migration/d1-to-turso",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({replaceExisting:false})});
+      const payload=await response.json().catch(()=>null) as D1MigrationResult|null;
+      if(!response.ok||!payload?.ok)throw new Error(payload?.error||"Falha ao transferir a Library antiga.");
+      setMessage("Library antiga recuperada com sucesso. Reabrindo o catálogo…");
+      await onCompleted();
+      window.setTimeout(()=>window.location.reload(),650);
+    }catch(error){setMessage(error instanceof Error?error.message:"Falha ao recuperar a Library antiga.");setBusy(false)}
+  }
+
+  return <main className="auth-shell"><form className="auth-card legacy-bootstrap-card" onSubmit={saveOriginAndMigrate}><Mark className="auth-mark"/><span>MIGRAÇÃO DOS DADOS</span><h1>Trazer Library existente</h1><p>Este Turso contém apenas o login/bootstrap. Antes de abrir o catálogo, a V61.9 precisa copiar o D1 da Library anterior. O R2 permanece onde está.</p><div className="legacy-bootstrap-summary"><div><small>DESTINO</small><strong>Turso conectado</strong></div><div><small>ORIGEM CONHECIDA</small><strong>{migration?.sourceDatabaseName||info?.d1DatabaseName||"Corvo Library / D1"}</strong></div></div>{sourceRows>0&&<p className="legacy-bootstrap-note">Origem localizada: aproximadamente <b>{sourceRows.toLocaleString("pt-BR")}</b> registros. A transferência compara as contagens antes de liberar o catálogo.</p>}{canUseSaved?<><p className="legacy-bootstrap-note">A credencial D1 necessária já está gravada. Nenhuma configuração precisa ser digitada novamente.</p><div className="legacy-bootstrap-actions"><button type="button" className="primary auth-submit" disabled={busy} onClick={()=>void migrateWithSavedConnection()}>{busy?"Transferindo…":"Trazer meus dados agora"}</button></div></>:<><p className="legacy-bootstrap-note">A referência da Library antiga foi preservada, mas a credencial secreta do D1 não veio dentro do ZIP. Crie um novo token D1 e informe-o uma única vez; depois ele fica gravado no próprio app.</p><div className="legacy-bootstrap-fields"><label>ACCOUNT ID<input autoFocus autoComplete="off" value={accountId} onChange={e=>setAccountId(e.target.value)} placeholder="Cloudflare Account ID"/></label><label>D1 DATABASE ID <small>(opcional)</small><input autoComplete="off" value={databaseId} onChange={e=>setDatabaseId(e.target.value)} placeholder="Deixe vazio para localizar"/></label><label>API TOKEN D1<input type="password" autoComplete="new-password" value={token} onChange={e=>setToken(e.target.value)} placeholder="Novo token com D1 Read"/></label></div><button className="primary auth-submit" disabled={busy||accountId.trim().length<4||token.trim().length<8}>{busy?"Recuperando Library…":"Salvar acesso e trazer meus dados"}</button></>}{message&&<div className="auth-error">{message}</div>}<small>Essa etapa não apaga o D1 antigo nem move os arquivos do R2. O catálogo só é liberado depois que o Turso tiver os dados da Library.</small></form></main>;
+}
+
 function AuthLoading() {
   return <main className="auth-shell"><section className="auth-card"><Mark className="auth-mark"/><span>CARREGANDO</span><h1>Corvo Library</h1><p>Preparando o acesso seguro…</p></section></main>;
 }
@@ -1130,9 +1208,9 @@ function ConnectModal({ connected, info, saving, onClose, onConnect }: { connect
 }
 
 function McpModalV2({ info, loading, error, onRetry, onClose, onRotate, onCopy }: { info: McpInfo | null; loading: boolean; error: string; onRetry: () => void; onClose: () => void; onRotate: () => void; onCopy: (value: string, label: string) => void }) {
-  return <div className="modal-wrap"><div className="backdrop" onClick={onClose}/><section className="modal mcp-modal"><header><div><span>CONEXÃO COM A IA</span><h2>Conectar o GPT por MCP</h2><p>O código ativo fica salvo. Só existe uma conexão válida por vez.</p></div><button onClick={onClose}>×</button></header>{loading && !info ? <div className="mcp-loading"><i/>Carregando conexão segura...</div> : !info && error ? <div className="mcp-error"><b>Não foi possível carregar a conexão</b><span>{error}</span><button onClick={onRetry}>Tentar novamente</button></div> : info && <><div className="mcp-hero"><div className="mcp-logo">⌁</div><div><strong>Corvo Library MCP</strong><span><i/> Código atual ativo</span></div><em>Supervisor MCP</em></div><div className="mcp-warning"><b>Guarde este link como uma senha.</b><span>Ao gerar um novo código, este link é revogado imediatamente e o novo passa a ser o único ativo.</span></div><div className="connection-field"><label>CÓDIGO ATIVO</label><div><code>{info.code}</code><button onClick={() => onCopy(info.code, "Código")}>Copiar</button></div></div><div className="connection-field"><label>ENDPOINT HTTPS — TERMINA EM /MCP</label><div><code>{info.mcp_url}</code><button onClick={() => onCopy(info.mcp_url, "Link MCP")}>Copiar link</button></div></div><div className="mcp-steps"><b>Como ativar no ChatGPT</b><ol><li>Ative <strong>Configurações → Segurança e login → Modo de desenvolvedor</strong></li><li>Abra <strong>Plugins → ＋</strong> e informe o nome <strong>Corvo Library</strong></li><li>Cole o endpoint acima e selecione <strong>Sem autenticação</strong></li><li>Atualize a conexão e confira as ferramentas do Supervisor MCP, incluindo estado consolidado, fila de decisões, perfis, coleta, materialização e QA</li></ol></div><footer><button onClick={onRotate} disabled={loading}>↻ Revogar e gerar novo</button><button className="primary" onClick={() => onCopy(info.mcp_url, "Link MCP")}>Copiar endpoint atual</button></footer></>}</section></div>;
+  return <div className="modal-wrap"><div className="backdrop" onClick={onClose}/><section className="modal mcp-modal"><header><div><span>CONEXÃO COM A IA</span><h2>Conectar o GPT por MCP</h2><p>O código ativo fica salvo. Só existe uma conexão válida por vez.</p></div><button onClick={onClose}>×</button></header>{loading && !info ? <div className="mcp-loading"><i/>Carregando conexão segura...</div> : !info && error ? <div className="mcp-error"><b>Não foi possível carregar a conexão</b><span>{error}</span><button onClick={onRetry}>Tentar novamente</button></div> : info && <><div className="mcp-hero"><div className="mcp-logo">⌁</div><div><strong>Corvo Library MCP</strong><span><i/> Código atual ativo</span></div><em>Supervisor MCP</em></div><div className="mcp-warning"><b>Guarde este link como uma senha.</b><span>Ao gerar um novo código, este link é revogado imediatamente e o novo passa a ser o único ativo.</span></div><div className="connection-field"><label>CÓDIGO ATIVO</label><div><code>{info.code}</code><button onClick={() => onCopy(info.code, "Código")}>Copiar</button></div></div><div className="connection-field"><label>ENDPOINT HTTPS — TERMINA EM /MCP</label><div><code>{info.mcp_url}</code><button onClick={() => onCopy(info.mcp_url, "Link MCP")}>Copiar link</button></div></div><div className="mcp-steps"><b>Como ativar no ChatGPT</b><ol><li>Ative <strong>Configurações → Segurança e login → Modo de desenvolvedor</strong></li><li>Abra <strong>Plugins → ＋</strong> e informe o nome <strong>Corvo Library</strong></li><li>Na Vercel, deixe o domínio de <strong>Production público</strong>: Settings → Deployment Protection → desative <strong>Vercel Authentication</strong></li><li>Cole o endpoint acima e selecione <strong>Sem autenticação</strong></li><li>Atualize a conexão e confira as ferramentas do Supervisor MCP, incluindo estado consolidado, fila de decisões, perfis, coleta, materialização e QA</li></ol></div><footer><button onClick={onRotate} disabled={loading}>↻ Revogar e gerar novo</button><button className="primary" onClick={() => onCopy(info.mcp_url, "Link MCP")}>Copiar endpoint atual</button></footer></>}</section></div>;
 }
 
 function McpModal({ info, loading, onClose, onRotate, onCopy }: { info: McpInfo | null; loading: boolean; onClose: () => void; onRotate: () => void; onCopy: (value: string, label: string) => void }) {
-  return <div className="modal-wrap"><div className="backdrop" onClick={onClose}/><section className="modal mcp-modal"><header><div><span>CONEXÃO COM A IA</span><h2>Conectar o GPT por MCP</h2><p>O código ativo fica salvo. Só existe uma conexão válida por vez.</p></div><button onClick={onClose}>×</button></header>{loading && !info ? <div className="mcp-loading"><i/>Carregando conexão segura...</div> : info && <><div className="mcp-hero"><div className="mcp-logo">⌁</div><div><strong>Corvo Library MCP</strong><span><i/> Código atual ativo</span></div><em>Supervisor MCP</em></div><div className="mcp-warning"><b>Guarde este link como uma senha.</b><span>Ao gerar um novo código, este link é revogado imediatamente e o novo passa a ser o único ativo.</span></div><div className="connection-field"><label>CÓDIGO ATIVO</label><div><code>{info.code}</code><button onClick={() => onCopy(info.code, "Código")}>Copiar</button></div></div><div className="connection-field"><label>ENDPOINT HTTPS — TERMINA EM /MCP</label><div><code>{info.mcp_url}</code><button onClick={() => onCopy(info.mcp_url, "Link MCP")}>Copiar link</button></div></div><div className="mcp-steps"><b>Como ativar no ChatGPT</b><ol><li>Ative <strong>Configurações → Segurança e login → Modo de desenvolvedor</strong></li><li>Abra <strong>Plugins → ＋</strong> e informe o nome <strong>Corvo Library</strong></li><li>Cole o endpoint acima e selecione <strong>Sem autenticação</strong></li><li>Atualize a conexão e confira as ferramentas do Supervisor MCP para coleta, QA visual e ZIP final</li></ol></div><footer><button onClick={onRotate} disabled={loading}>↻ Revogar e gerar novo</button><button className="primary" onClick={() => onCopy(info.mcp_url, "Link MCP")}>Copiar endpoint atual</button></footer></>}</section></div>;
+  return <div className="modal-wrap"><div className="backdrop" onClick={onClose}/><section className="modal mcp-modal"><header><div><span>CONEXÃO COM A IA</span><h2>Conectar o GPT por MCP</h2><p>O código ativo fica salvo. Só existe uma conexão válida por vez.</p></div><button onClick={onClose}>×</button></header>{loading && !info ? <div className="mcp-loading"><i/>Carregando conexão segura...</div> : info && <><div className="mcp-hero"><div className="mcp-logo">⌁</div><div><strong>Corvo Library MCP</strong><span><i/> Código atual ativo</span></div><em>Supervisor MCP</em></div><div className="mcp-warning"><b>Guarde este link como uma senha.</b><span>Ao gerar um novo código, este link é revogado imediatamente e o novo passa a ser o único ativo.</span></div><div className="connection-field"><label>CÓDIGO ATIVO</label><div><code>{info.code}</code><button onClick={() => onCopy(info.code, "Código")}>Copiar</button></div></div><div className="connection-field"><label>ENDPOINT HTTPS — TERMINA EM /MCP</label><div><code>{info.mcp_url}</code><button onClick={() => onCopy(info.mcp_url, "Link MCP")}>Copiar link</button></div></div><div className="mcp-steps"><b>Como ativar no ChatGPT</b><ol><li>Ative <strong>Configurações → Segurança e login → Modo de desenvolvedor</strong></li><li>Abra <strong>Plugins → ＋</strong> e informe o nome <strong>Corvo Library</strong></li><li>Na Vercel, deixe o domínio de <strong>Production público</strong>: Settings → Deployment Protection → desative <strong>Vercel Authentication</strong></li><li>Cole o endpoint acima e selecione <strong>Sem autenticação</strong></li><li>Atualize a conexão e confira as ferramentas do Supervisor MCP para coleta, QA visual e ZIP final</li></ol></div><footer><button onClick={onRotate} disabled={loading}>↻ Revogar e gerar novo</button><button className="primary" onClick={() => onCopy(info.mcp_url, "Link MCP")}>Copiar endpoint atual</button></footer></>}</section></div>;
 }

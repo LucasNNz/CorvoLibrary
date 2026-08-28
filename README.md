@@ -83,3 +83,6 @@ A V61.9 consolida THUMB e pacote final sem transporte de arquivos pelo chat. THU
 ## FIX5 — Drizzle Type Sweep
 
 Corrige o lote de erros de type-check Drizzle revelado pelo build real da Vercel: campos QA vindos de `materialization_files`, batches heterogêneos, narrowing de SHA no FAST PUSH e batches dinâmicos do Supervisor.
+
+## MCP público na Vercel (FIX8)
+O painel da Corvo Library continua protegido pelo login interno, mas o endpoint MCP usa `Authentication = None` no ChatGPT. O endpoint é uma capability URL revogável em `/c/<codigo>/mcp` e não depende de cookie, OAuth ou Bearer. Para que o scanner do ChatGPT alcance esse endpoint, **Vercel Authentication / Deployment Protection deve estar desativado para Production**. A proteção da interface humana continua sendo feita pela própria Library.
