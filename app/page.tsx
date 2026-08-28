@@ -18,7 +18,10 @@ type CloudflareInfo = { configured: boolean; accountId: string; bucket: string; 
 type CloudflareForm = { accountId: string; bucket: string; accessKeyId: string; secretAccessKey: string; endpoint: string; d1ApiToken: string; d1DatabaseId: string; d1DatabaseName: string };
 type D1MigrationInfo = { ready:boolean; sourceDatabaseId:string; sourceDatabaseName:string; sourceCounts:Record<string,number>; targetCounts:Record<string,number>; targetHasApplicationData:boolean; targetTables:string[]; rollbackAvailable?:boolean; backupKey?:string; lastMigrationAt?:string; error?:string };
 type D1MigrationResult = { ok:boolean; sourceDatabaseId:string; sourceDatabaseName:string; sourceCounts:Record<string,number>; targetCounts:Record<string,number>; tablesCompared:number; settingsSourceCount:number; settingsTargetCount:number; dumpBytes:number; migratedAt:string; backupKey?:string; backupBytes?:number; error?:string };
-type AuthStatus = { loading:boolean; configured:boolean; authenticated:boolean; username:string };
+type AuthStatus = {
+  loading:boolean; configured:boolean; authenticated:boolean; username:string;
+  bootstrapRequired:boolean; bootstrapError?:string; bootstrapMissing:string[]; marketplaceUrl:string;
+};
 type SupervisorInfo = { enabled: boolean; supervisor: string; operationalControl: string; externalVisualQa: string; persistentConfiguration: string; autonomousCollection: string; cloudAiRequired: boolean; defaultProfileId?: string | null; collectionTimeoutMs: number; parallelism: number };
 type SupervisorForm = { enabled: boolean };
 type CollectionBatch = { id: string; name: string; status: string; totalTerms: number; totalTarget: number; totalCollected: number; createdAt: string | number | Date; updatedAt: string | number | Date };
@@ -210,17 +213,31 @@ export default function Home() {
   const [mcpLoading, setMcpLoading] = useState(false);
   const [mcpError, setMcpError] = useState("");
   const [toast, setToast] = useState("");
-  const [authStatus, setAuthStatus] = useState<AuthStatus>({ loading:true, configured:false, authenticated:false, username:"" });
+  const [authStatus, setAuthStatus] = useState<AuthStatus>({ loading:true, configured:false, authenticated:false, username:"", bootstrapRequired:false, bootstrapMissing:[], marketplaceUrl:"https://vercel.com/marketplace/tursocloud" });
   const [bulkProject, setBulkProject] = useState("");
   const [bulkText, setBulkText] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetch("/api/auth/status", { cache:"no-store" })
-      .then(async (response) => response.ok ? response.json() : { configured:false, authenticated:false, username:"" })
-      .then((value) => setAuthStatus({ loading:false, configured:Boolean(value.configured), authenticated:Boolean(value.authenticated), username:String(value.username || "") }))
-      .catch(() => setAuthStatus({ loading:false, configured:false, authenticated:false, username:"" }));
+  const refreshAuthStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/auth/status", { cache:"no-store" });
+      const value = await response.json().catch(() => ({})) as { configured?:boolean;authenticated?:boolean;username?:string;bootstrapRequired?:boolean;bootstrap?:{missing?:string[];marketplaceUrl?:string;error?:string} };
+      setAuthStatus({
+        loading:false,
+        configured:Boolean(value.configured),
+        authenticated:Boolean(value.authenticated),
+        username:String(value.username || ""),
+        bootstrapRequired:Boolean(value.bootstrapRequired),
+        bootstrapError:value.bootstrap?.error ? String(value.bootstrap.error) : undefined,
+        bootstrapMissing:Array.isArray(value.bootstrap?.missing) ? value.bootstrap!.missing!.map(String) : [],
+        marketplaceUrl:String(value.bootstrap?.marketplaceUrl || "https://vercel.com/marketplace/tursocloud"),
+      });
+    } catch {
+      setAuthStatus({ loading:false, configured:false, authenticated:false, username:"", bootstrapRequired:true, bootstrapError:"DATABASE_STATUS_UNAVAILABLE", bootstrapMissing:[], marketplaceUrl:"https://vercel.com/marketplace/tursocloud" });
+    }
   }, []);
+
+  useEffect(() => { void refreshAuthStatus(); }, [refreshAuthStatus]);
 
   useEffect(() => {
     if (!authStatus.authenticated) return;
@@ -436,7 +453,7 @@ export default function Home() {
     const response = await fetch(endpoint, { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(values) });
     const payload = await response.json().catch(() => null) as { username?:string; error?:string } | null;
     if (!response.ok) throw new Error(payload?.error === "INVALID_LOGIN" ? "Nome ou senha incorretos." : payload?.error || "Não foi possível entrar.");
-    setAuthStatus({ loading:false, configured:true, authenticated:true, username:String(payload?.username || values.username) });
+    setAuthStatus({ loading:false, configured:true, authenticated:true, username:String(payload?.username || values.username), bootstrapRequired:false, bootstrapMissing:[], marketplaceUrl:authStatus.marketplaceUrl });
     window.location.reload();
   }
 
@@ -448,6 +465,7 @@ export default function Home() {
   const bulkRows = bulkText.split("\n").filter(Boolean);
 
   if (authStatus.loading) return <AuthLoading />;
+  if (authStatus.bootstrapRequired) return <DatabaseBootstrapScreen error={authStatus.bootstrapError} missing={authStatus.bootstrapMissing} marketplaceUrl={authStatus.marketplaceUrl} onRetry={refreshAuthStatus} />;
   if (!authStatus.authenticated) return <AuthScreen configured={authStatus.configured} suggestedUsername={authStatus.username} onSubmit={completeAuth} />;
 
   return (
@@ -1005,6 +1023,13 @@ function AutomaticCollectionLegacy({ onFlash }: { onFlash: (message: string) => 
 
 function AuthLoading() {
   return <main className="auth-shell"><section className="auth-card"><Mark className="auth-mark"/><span>CARREGANDO</span><h1>Corvo Library</h1><p>Preparando o acesso seguro…</p></section></main>;
+}
+
+function DatabaseBootstrapScreen({ error, missing, marketplaceUrl, onRetry }: { error?:string; missing:string[]; marketplaceUrl:string; onRetry:()=>Promise<void> }) {
+  const [checking,setChecking]=useState(false);
+  async function retry(){setChecking(true);try{await onRetry();}finally{setChecking(false)}}
+  const connectionFailed = error === "DATABASE_CONNECTION_FAILED";
+  return <main className="auth-shell"><section className="auth-card"><Mark className="auth-mark"/><span>CONFIGURAÇÃO INICIAL</span><h1>Conectar banco da Library</h1><p>{connectionFailed ? "A integração Turso foi encontrada, mas a Library ainda não conseguiu abrir o banco. Reconecte o recurso ou gere um novo deploy e tente novamente." : "Antes de criar o login, conecte um banco Turso ao projeto na Vercel. A integração grava a conexão automaticamente para todos os PCs; você não precisa editar arquivos nem preencher environment manualmente."}</p><div className="auth-bootstrap-box"><strong>Banco persistente necessário</strong><span>Turso / libSQL · compartilhado entre todos os acessos</span>{missing.length>0&&<small>Pendente: {missing.join(" + ")}</small>}</div><a className="primary auth-submit auth-link-button" href={marketplaceUrl} target="_blank" rel="noreferrer">Conectar Turso na Vercel</a><button type="button" className="secondary auth-submit" disabled={checking} onClick={()=>void retry()}>{checking?"Verificando…":"Já conectei — verificar novamente"}</button><small>Depois que a Vercel conectar o recurso ao projeto, as variáveis do banco são injetadas automaticamente. Se o deployment atual não receber a conexão, faça um novo redeploy e volte aqui.</small></section></main>;
 }
 
 function AuthScreen({ configured, suggestedUsername, onSubmit }: { configured:boolean; suggestedUsername:string; onSubmit:(endpoint:"/api/auth/setup"|"/api/auth/login",values:{username:string;password:string;remember:boolean})=>Promise<void> }) {

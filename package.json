@@ -1,6 +1,6 @@
 {
   "name": "corvo-library",
-  "version": "0.1.0-vercel.9-fix6-fast-push-drizzle-narrowing",
+  "version": "0.1.0-vercel.9-fix7-first-use-turso-bootstrap",
   "private": true,
   "engines": {
     "node": "24.x"
@@ -19,15 +19,15 @@
     "typecheck": "tsc --noEmit --pretty false"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1116.0",
+    "@libsql/client": "0.17.4",
+    "@vercel/functions": "3.9.5",
     "aws4fetch": "1.0.20",
     "drizzle-orm": "0.45.2",
     "fflate": "0.8.2",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "@libsql/client": "0.17.4",
-    "@aws-sdk/client-s3": "3.1116.0",
-    "@vercel/functions": "3.9.5",
     "sharp": "0.35.3"
   },
   "devDependencies": {

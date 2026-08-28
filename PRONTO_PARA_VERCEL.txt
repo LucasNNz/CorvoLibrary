@@ -63,3 +63,13 @@ A V61.9 consolida THUMB e pacote final sem transporte de arquivos pelo chat. THU
 - obter_link_download_pacote: URL R2 assinada para o agente local.
 - confirmar_download_pacote: DOWNLOADED idempotente com sha256_verified.
 - MCP resource_link permanece estruturalmente DISABLED.
+
+FIX7 — PRIMEIRO ACESSO / TURSO
+-----------------------------
+Antes do formulário de login, a aplicação valida se a integração Turso está
+conectada ao deployment. Se TURSO_DATABASE_URL/TURSO_AUTH_TOKEN ainda não forem
+injetados pela Vercel, a própria UI mostra "Conectar banco da Library".
+
+Caminho recomendado: Vercel Marketplace -> Turso Cloud -> conectar recurso ao
+projeto (produção + preview). A integração injeta as credenciais; não editar .env.
+Depois, gerar/redeployar e clicar "Já conectei — verificar novamente".
