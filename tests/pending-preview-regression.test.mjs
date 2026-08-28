@@ -14,7 +14,9 @@ test("pending cards recover previews for legacy octet-stream image assets", asyn
 
 test("file preview route infers content-type from stored filename/key", async () => {
   const route = await source("app/api/files/[id]/route.ts");
-  assert.match(route, /resolveMediaMime\(object\.httpMetadata\?\.contentType \|\| asset\.mimeType, asset\.originalName, asset\.r2Key\)/);
+  assert.match(route, /resolveMediaMime\(asset\.mimeType, asset\.originalName, asset\.r2Key\)/);
+  assert.match(route, /createSignedR2GetUrl/);
+  assert.match(route, /Response\.redirect\(signedUrl, 307\)/);
 });
 
 test("future raw R2 synchronization persists inferred media MIME", async () => {
