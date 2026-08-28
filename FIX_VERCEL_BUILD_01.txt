@@ -1,0 +1,13 @@
+CORVO LIBRARY V61.9 — VERCEL BUILD FIX 01
+
+Correção:
+- rollbackMigration estava declarada dentro de runMigration em app/page.tsx.
+- A função foi movida para o escopo de SettingsV2, permitindo uso pelo botão "Restaurar backup anterior".
+- sourceRows/targetRows duplicados foram consolidados.
+
+Validação:
+- 129/129 testes PASS.
+- validação estrutural Vercel PASS.
+- parse TypeScript/TSX PASS.
+
+Use este ZIP no lugar do FINAL_SECURE_TRANSFER anterior.

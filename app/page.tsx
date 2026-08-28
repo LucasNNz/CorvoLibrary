@@ -1043,10 +1043,7 @@ function SettingsV2({ connected, cloudflareInfo, supervisorInfo, mcpConfigured, 
 
   useEffect(() => { void refreshMigration(); }, [refreshMigration]);
 
-  async function runMigration() {
-    if (!cloudflareInfo?.d1Configured || migrationBusy) return;
-    const replaceExisting = Boolean(migration?.targetHasApplicationData);
-    async function rollbackMigration() {
+  async function rollbackMigration() {
     if (!migration?.rollbackAvailable || migrationBusy) return;
     if (!window.confirm("Restaurar o backup do Turso criado antes da última substituição D1 → Turso?")) return;
     setMigrationBusy(true); setMigrationMessage("Restaurando backup anterior do Turso…");
@@ -1056,12 +1053,19 @@ function SettingsV2({ connected, cloudflareInfo, supervisorInfo, mcpConfigured, 
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Falha ao restaurar backup.");
       setMigrationMessage("Backup anterior restaurado com sucesso.");
       window.setTimeout(() => window.location.reload(), 1000);
-    } catch (error) { setMigrationMessage(error instanceof Error ? error.message : "Falha ao restaurar backup."); }
-    finally { setMigrationBusy(false); }
+    } catch (error) {
+      setMigrationMessage(error instanceof Error ? error.message : "Falha ao restaurar backup.");
+    } finally {
+      setMigrationBusy(false);
+    }
   }
 
   const sourceRows = Object.values(migration?.sourceCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
-    const targetRows = Object.values(migration?.targetCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+  const targetRows = Object.values(migration?.targetCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
+
+  async function runMigration() {
+    if (!cloudflareInfo?.d1Configured || migrationBusy) return;
+    const replaceExisting = Boolean(migration?.targetHasApplicationData);
     const warning = replaceExisting
       ? `O Turso já possui dados (${targetRows.toLocaleString("pt-BR")} registros). Isso SUBSTITUIRÁ o destino pela cópia do D1 atual. O R2 não será alterado. Continuar?`
       : `Copiar o D1 atual (${sourceRows.toLocaleString("pt-BR")} registros contabilizados) para o Turso? O R2 não será alterado.`;
@@ -1082,9 +1086,6 @@ function SettingsV2({ connected, cloudflareInfo, supervisorInfo, mcpConfigured, 
       setMigrationMessage(error instanceof Error ? error.message : "Falha durante a migração.");
     } finally { setMigrationBusy(false); }
   }
-
-  const sourceRows = Object.values(migration?.sourceCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
-  const targetRows = Object.values(migration?.targetCounts || {}).reduce((sum, value) => sum + Number(value || 0), 0);
 
   return <div className="content settings"><div className="page-heading"><div><p>PREFERÊNCIAS</p><h1>Configurações</h1><span>Gerencie conexão, sincronização e comportamento da biblioteca.</span></div></div><AccessSettings username={authUsername} onUpdated={onAuthUpdated} onLogout={onLogout}/><section className="mcp-settings"><div><div className="mcp-mini">⌁</div><h3>MCP para GPT</h3><p>O MCP expõe estado, evidências e controles; o ChatGPT atua como supervisor operacional.</p></div><div className="connection-box"><span className={mcpConfigured ? "status-dot on" : "status-dot"}/><div><strong>{mcpConfigured ? "Supervisor MCP conectado" : "Servidor MCP disponível"}</strong><p>Projetos, coleta, fila de decisões, QA visual, perfis, circuit breaker e ZIP.</p></div><button onClick={onMcp}>{mcpConfigured ? "Ver conexão" : "Gerar conexão"}</button></div></section><section><div><h3>Supervisor IA — Controle via MCP</h3><p>Ligar libera controle supervisor completo para o ChatGPT. Não chama Cloudflare, Llama, Qwen nem outra API de IA.</p></div><div className="connection-box"><span className={enabled ? "status-dot on" : "status-dot"}/><div><strong>{enabled ? "ChatGPT via MCP · LIGADO" : "Supervisor · DESLIGADO"}</strong><p>{enabled ? "Controle operacional COMPLETO · QA visual externo ATIVO · configurações persistentes ATIVAS." : "Somente execução determinística. Coleta autônoma continua ativa e acumula PARA_ANALISE."}</p></div><button onClick={onSupervisor}>{enabled ? "Gerenciar" : "Ligar"}</button></div></section><section><div><h3>Cloudflare — R2 + D1</h3><p>Credenciais persistentes no banco remoto. Configure uma vez pelo app e reutilize em qualquer PC.</p></div><div className="connection-box"><span className={connected || cloudflareInfo?.d1Configured ? "status-dot on" : "status-dot"}/><div><strong>{connected || cloudflareInfo?.d1Configured ? "Configuração persistente salva" : "Não configurado"}</strong><p>{cloudflareInfo?.needsReconfigure ? "Configuração antiga precisa ser substituída." : `${connected ? `R2 ${cloudflareInfo?.bucket || "configurado"}` : "R2 pendente"} · ${cloudflareInfo?.d1Configured ? `D1 ${cloudflareInfo.d1DatabaseName || "localizado"}` : "D1 pendente"}`}</p></div><button onClick={onConnect}>{connected || cloudflareInfo?.d1Configured ? "Gerenciar" : "Configurar"}</button></div></section><section><div><h3>Migração da Library — D1 → Turso</h3><p>A própria aplicação exporta o banco atual, importa no Turso e confere as contagens. Os arquivos do R2 permanecem no mesmo bucket.</p></div><div className="connection-box"><span className={migration?.ready ? "status-dot on" : "status-dot"}/><div><strong>{migrationBusy ? "Migração em andamento…" : migration?.ready ? `D1 ${migration.sourceDatabaseName || "localizado"} pronto para copiar` : cloudflareInfo?.d1Configured ? "Verificando origem e destino…" : "Configure o D1 primeiro"}</strong><p>{migration?.error ? migration.error : migration?.ready ? `Origem: ${sourceRows.toLocaleString("pt-BR")} registros · Turso: ${targetRows.toLocaleString("pt-BR")} registros${migration.targetHasApplicationData ? " · destino já contém dados" : ""}` : "Depois de salvar o Cloudflare, este botão substitui scripts e terminal."}</p>{migrationMessage && <small>{migrationMessage}</small>}</div><div className="migration-actions"><button disabled={!migration?.ready || migrationBusy} onClick={runMigration}>{migrationBusy ? "Transferindo…" : migration?.targetHasApplicationData ? "Reimportar do D1" : "Migrar D1 → Turso"}</button>{migration?.rollbackAvailable && <button disabled={migrationBusy} onClick={rollbackMigration}>Restaurar backup anterior</button>}</div></div></section><section><div><h3>Coleta autônoma noturna</h3><p>Pesquisa, testa URLs, materializa, valida tecnicamente e salva candidatas em PARA_ANALISE sem depender de IA.</p></div><label className="toggle"><input type="checkbox" checked readOnly/><span/></label></section><section><div><h3>QA visual obrigatório</h3><p>MATERIALIZADO não significa APROVADO. Somente decisão visual do Supervisor MCP pode aprovar candidatas novas.</p></div><label className="toggle"><input type="checkbox" checked readOnly/><span/></label></section></div>;
 }
