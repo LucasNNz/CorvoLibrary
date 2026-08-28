@@ -617,30 +617,34 @@ async function promoteCandidate(candidate: typeof fastPushCandidates.$inferSelec
   if (!candidate.sha256 || !candidate.r2Key || !candidate.mimeType) throw new Error("CANDIDATE_NOT_MATERIALIZED");
   const [approvedCandidate] = await db.update(fastPushCandidates).set({ status:"APPROVED_CANDIDATE", decisionSource:source, decisionNote:note || null, analyzedAt:now(), updatedAt:now() }).where(eq(fastPushCandidates.id, candidate.id)).returning();
   candidate = approvedCandidate || candidate;
-  let [asset] = await db.select().from(assets).where(eq(assets.sha256, candidate.sha256)).limit(1);
+  const candidateSha256 = candidate.sha256;
+  const candidateR2Key = candidate.r2Key;
+  const candidateMimeType = candidate.mimeType;
+  if (!candidateSha256 || !candidateR2Key || !candidateMimeType) throw new Error("CANDIDATE_NOT_MATERIALIZED");
+  let [asset] = await db.select().from(assets).where(eq(assets.sha256, candidateSha256)).limit(1);
   if (!asset) {
-    const assetId = `AST-FP-${candidate.sha256.slice(0, 16).toUpperCase()}`;
-    const ext = extForMime(candidate.mimeType);
+    const assetId = `AST-FP-${candidateSha256.slice(0, 16).toUpperCase()}`;
+    const ext = extForMime(candidateMimeType);
     const originalName = safeName(candidate.targetName || `${candidate.concept || candidate.subject || candidate.id}.${ext}`);
     const fileName = extOf(originalName) ? originalName : `${originalName}.${ext}`;
     const targetKey = `assets/${assetId}/${fileName}`;
-    const object = await env.BUCKET.get(candidate.r2Key);
+    const object = await env.BUCKET.get(candidateR2Key);
     if (!object) throw new Error("R2_CANDIDATE_NOT_FOUND");
-    await env.BUCKET.put(targetKey, await object.arrayBuffer(), { httpMetadata: { contentType: candidate.mimeType }, customMetadata: { sha256: candidate.sha256, promotedFrom: candidate.id } });
+    await env.BUCKET.put(targetKey, await object.arrayBuffer(), { httpMetadata: { contentType: candidateMimeType }, customMetadata: { sha256: candidateSha256, promotedFrom: candidate.id } });
     const value = {
       id: assetId,
       name: candidate.concept || candidate.subject || candidate.targetName || candidate.id,
       universe: candidate.universe || "Sem universo",
-      kind: kindFromMediaMime(candidate.mimeType),
+      kind: kindFromMediaMime(candidateMimeType),
       subject: candidate.subject,
       status: "Aprovado",
       previousStatus: "Pendente",
       tags: candidate.tags,
       r2Key: targetKey,
       originalName: fileName,
-      mimeType: candidate.mimeType,
+      mimeType: candidateMimeType,
       sizeBytes: candidate.sizeBytes || object.size,
-      sha256: candidate.sha256,
+      sha256: candidateSha256,
       semanticFamily: [candidate.universe, candidate.subject || candidate.concept].filter(Boolean).join("::").toLowerCase() || null,
       projectOrigin: candidate.projectId,
       scriptReference: candidate.scriptReference,
@@ -652,7 +656,7 @@ async function promoteCandidate(candidate: typeof fastPushCandidates.$inferSelec
     };
     try { [asset] = await db.insert(assets).values(value).returning(); }
     catch (error) {
-      [asset] = await db.select().from(assets).where(or(eq(assets.id, assetId), eq(assets.sha256, candidate.sha256))).limit(1);
+      [asset] = await db.select().from(assets).where(or(eq(assets.id, assetId), eq(assets.sha256, candidateSha256))).limit(1);
       if (!asset) throw error;
       if (asset.r2Key !== targetKey) await env.BUCKET.delete(targetKey).catch(() => undefined);
     }

@@ -412,13 +412,15 @@ export async function completeWorkerWork(input: Record<string, unknown>) {
   const durationMs = work.leaseStartedAt ? Math.max(0, completedAt.getTime() - work.leaseStartedAt.getTime()) : 0;
   const queueWaitMs = work.leaseStartedAt ? Math.max(0, work.leaseStartedAt.getTime() - work.readyAt.getTime()) : 0;
   const sessionBeforeComplete = (await db.select().from(workerSessions).where(eq(workerSessions.executionId, executionId)).limit(1))[0];
-  const statements = [
-    db.update(workerWorkItems).set({ status: "COMPLETED", completedAt, resumePriority: 0, leaseOwnerWorkerId: null, leaseExecutionId: null, leaseStartedAt: null, leaseLastSeenAt: null, leaseExpiresAt: null, lastAction: `COMPLETED:${resultText}`, updatedAt: completedAt }).where(eq(workerWorkItems.id, work.id)),
-    db.update(workerSessions).set({ status: "LIVRE", currentWorkItemId: null, projectId: null, stage: null, lastAction: `COMPLETED:${resultText}`, lastSeenAt: completedAt, updatedAt: completedAt }).where(eq(workerSessions.executionId, executionId)),
-    db.insert(stageMetrics).values({ id: makeId("SMET"), projectId: work.projectId, projectDomain: work.projectDomain, workerId, workerType: sessionBeforeComplete?.workerType || work.workerType, workItemId: work.id, stage: work.stage, result: resultText, durationMs, queueWaitMs, attempts: work.attempts, startedAt: work.leaseStartedAt, completedAt, createdAt: completedAt }),
-  ];
-  if (work.scopeType === "EXPORT_JOB") statements.push(db.update(exportJobs).set({ status: "COMPLETED", completedAt, updatedAt: completedAt }).where(eq(exportJobs.id, work.scopeId)) as typeof statements[number]);
-  await db.batch(statements);
+  const completeWork = db.update(workerWorkItems).set({ status: "COMPLETED", completedAt, resumePriority: 0, leaseOwnerWorkerId: null, leaseExecutionId: null, leaseStartedAt: null, leaseLastSeenAt: null, leaseExpiresAt: null, lastAction: `COMPLETED:${resultText}`, updatedAt: completedAt }).where(eq(workerWorkItems.id, work.id));
+  const releaseSession = db.update(workerSessions).set({ status: "LIVRE", currentWorkItemId: null, projectId: null, stage: null, lastAction: `COMPLETED:${resultText}`, lastSeenAt: completedAt, updatedAt: completedAt }).where(eq(workerSessions.executionId, executionId));
+  const insertMetric = db.insert(stageMetrics).values({ id: makeId("SMET"), projectId: work.projectId, projectDomain: work.projectDomain, workerId, workerType: sessionBeforeComplete?.workerType || work.workerType, workItemId: work.id, stage: work.stage, result: resultText, durationMs, queueWaitMs, attempts: work.attempts, startedAt: work.leaseStartedAt, completedAt, createdAt: completedAt });
+  if (work.scopeType === "EXPORT_JOB") {
+    const completeExport = db.update(exportJobs).set({ status: "COMPLETED", completedAt, updatedAt: completedAt }).where(eq(exportJobs.id, work.scopeId));
+    await db.batch([completeWork, releaseSession, insertMetric, completeExport]);
+  } else {
+    await db.batch([completeWork, releaseSession, insertMetric]);
+  }
   await recordWorkerEvent({ workerId, executionId, projectId: work.projectId, workItemId: work.id, stage: work.stage, eventType: "WORK_ITEM_COMPLETED", status: resultText, durationMs, metadata: { result_payload: input.resultado_detalhado || null } });
   await db.update(automaticProjects).set({ lastAction: `${workerId} concluiu ${work.stage}`, updatedAt: completedAt }).where(eq(automaticProjects.id, work.projectId));
   await syncWorkerQueue(work.projectId);

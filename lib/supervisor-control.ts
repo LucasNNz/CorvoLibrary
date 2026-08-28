@@ -387,8 +387,8 @@ export async function alterItemsStrategiesBatch(projectId: string, changes: Arra
     if (item.collectionTermId && query) termUpdates.push(db.update(collectionTerms).set({term:query,status:"PENDENTE",sourceCursor:0,rounds:0,attempts:0,failureReason:null,sourcePlan:encode(next),updatedAt:now()}).where(eq(collectionTerms.id,item.collectionTermId)));
     results.push({item_id:item.itemKey,status:"RELINK_REQUIRED",referencia:reference||item.semanticReference,query:query||null,fonte:source||null});
   }
-  const statements=[...updates,...termUpdates];
-  if (statements.length) await db.batch(statements as [typeof statements[number],...Array<typeof statements[number]>]);
+  if (updates.length) await db.batch(updates as [typeof updates[number], ...Array<typeof updates[number]>]);
+  if (termUpdates.length) await db.batch(termUpdates as [typeof termUpdates[number], ...Array<typeof termUpdates[number]>]);
   return {projeto_id:projectId,processados:results.length,resultados:results};
 }
 
