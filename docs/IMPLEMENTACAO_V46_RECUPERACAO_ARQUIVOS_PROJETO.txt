@@ -1,0 +1,34 @@
+CORVO LIBRARY V46 — RECUPERACAO DE ARQUIVOS DE PROJETO VIA MCP
+Data: 2026-08-27
+
+OBJETIVO
+Permitir que SCRIPT e REQUIREMENTS já anexados e versionados no R2 possam ser recuperados diretamente pelo ChatGPT via MCP, sem depender do texto original da conversa.
+
+NOVAS FERRAMENTAS MCP
+1. obter_conteudo_arquivo_projeto
+   - seleciona por projeto_id;
+   - aceita arquivo_id exato;
+   - aceita tipo SCRIPT/REQUIREMENTS;
+   - aceita versão;
+   - quando não há arquivo_id, seleciona a versão mais recente compatível;
+   - lê o objeto real do R2;
+   - retorna nome, tipo, versão, tamanho, SHA-256 e conteúdo TXT;
+   - suporta leitura paginada para arquivos grandes por inicio_caractere/limite_caracteres;
+   - nunca reconstrói conteúdo a partir de logs ou metadados.
+
+2. baixar_arquivo_projeto
+   - seleciona o mesmo arquivo versionado;
+   - gera link temporário autenticado pelo código MCP;
+   - validade configurável de 1 a 60 minutos;
+   - download preserva nome original e MIME;
+   - o objeto continua privado no R2.
+
+ROTA HTTP
+GET /api/projects/{id}/files?file_id=...&code=...&exp=...
+- continua aceitando sessão de proprietário;
+- também aceita código MCP válido + expiração;
+- rejeita links expirados;
+- não torna o bucket público.
+
+CASO COBERTO
+Um SCRIPT como ROTEIRO_MHA_DUPLA_PRO_REELS.txt, já salvo no projeto, pode agora ser lido pelo conteúdo ou baixado diretamente mesmo que a conversa original não esteja disponível.

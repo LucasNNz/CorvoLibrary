@@ -1,0 +1,49 @@
+CORVO LIBRARY V61.9 — FASE 2 — DADOS REAIS
+
+OBJETIVO
+Migrar o banco D1 vivo para Turso/libSQL sem depender do ChatGPT Sites e sem mover o R2.
+
+FLUXO
+1. Cloudflare D1 -> export SQL pela API oficial.
+2. Turso vazio -> import integral do SQL.
+3. Verificar tabelas/contagens e amostra de r2_key.
+4. No Preview Vercel, abrir Configurações -> Cloudflare e informar novas credenciais R2 + token D1 uma única vez.
+5. Clicar Salvar e cravar configuração; o app valida, detecta o D1 e persiste tudo criptografado no Turso para qualquer PC.
+6. Fazer smoke tests antes de qualquer promoção para produção.
+
+COMANDOS
+npm run db:export:d1 -- ./d1-export.sql
+npm run db:migrate:vercel -- ./d1-export.sql
+npm run db:verify:vercel
+
+CONFIGURACAO CLOUDFLARE — CAMINHO PRINCIPAL
+Usar a própria aba Configurações do app.
+- Account ID
+- Bucket R2
+- Access Key ID R2
+- Secret Access Key R2
+- API Token D1
+- Database ID/Nome D1 opcionais; o app tenta descobrir pelo schema.
+
+As variáveis CLOUDFLARE_* continuam aceitas apenas pelo script CLI de recuperação, não são necessárias para o uso normal do app.
+
+VARIAVEIS DESTINO TURSO
+TURSO_DATABASE_URL
+TURSO_AUTH_TOKEN
+
+SEGURANCA
+- Nenhuma credencial deve entrar no ZIP/repositório.
+- O import falha se o Turso já possuir tabelas, salvo ALLOW_NONEMPTY_TURSO=1 explicitamente.
+- A V61.8/D1 atual permanece intacta; export é leitura/cópia.
+- R2 permanece onde está.
+
+STATUS DESTA REVISAO
+- Exportador D1 REST independente do Sites: PRONTO.
+- Descoberta de database por schema Corvo: PRONTA.
+- Importador D1 SQL -> Turso: PRONTO.
+- Trava contra destino Turso não vazio: PRONTA.
+- Verificador de tabelas/contagens/r2_key: PRONTO.
+- Persistência R2 + D1 pela UI: PRONTA.
+- Detecção do D1 real ao salvar: PRONTA.
+- Execução contra D1 vivo: PENDENTE apenas de inserir novas credenciais na aba Configurações do Preview.
+- Provisionamento Turso real: PENDENTE de conexão/credencial Turso.

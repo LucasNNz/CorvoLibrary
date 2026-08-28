@@ -1,0 +1,46 @@
+{
+  "name": "corvo-library",
+  "version": "0.1.0-vercel.5-secure-final",
+  "private": true,
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "node --test tests/*.test.mjs",
+    "lint": "eslint . --ignore-pattern .next",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:vercel": "node scripts/migrate-sqlite-to-turso.mjs",
+    "db:export:d1": "node scripts/export-cloudflare-d1.mjs",
+    "db:verify:vercel": "node scripts/verify-libsql-data.mjs",
+    "verify:vercel": "node scripts/validate-vercel-migration.mjs && npm test"
+  },
+  "dependencies": {
+    "aws4fetch": "^1.0.20",
+    "drizzle-orm": "0.45.2",
+    "fflate": "^0.8.2",
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "@libsql/client": "^0.17.4",
+    "@aws-sdk/client-s3": "^3.1116.0",
+    "@vercel/functions": "^3.9.5",
+    "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "react-server-dom-webpack": "19.2.6",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3"
+  },
+  "type": "module",
+  "displayName": "Corvo Library"
+}

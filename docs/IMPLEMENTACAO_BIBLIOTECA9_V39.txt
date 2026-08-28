@@ -1,0 +1,229 @@
+CORVO LIBRARY V39 — SUPERVISOR IA V1.1 COMPLETO
+DATA: 2026-08-26
+BASE: CORVO LIBRARY V38
+ESPECIFICAÇÃO: docs/ESPECIFICACAO_SUPERVISOR_IA_BIBLIOTECA9_V1_1.txt
+
+OBJETIVO
+Fechar as lacunas restantes da V38 para que o Supervisor IA deixe de ser apenas um contrato/planejador parcial e passe a comandar o ciclo real da Biblioteca: linkagem semântica, planejamento, escolha de rota, materialização, QA visual, correção técnica, rejeição, próxima candidata, troca de fonte/query, relink, reconciliação e exportação.
+
+REGRA CONSOLIDADA
+A IA COMANDA A ESTRATÉGIA.
+A BIBLIOTECA EXECUTA.
+O ESTADO REAL DOS ARQUIVOS DEFINE A VERDADE.
+O ZIP FINAL É VALIDADO PELOS TARGET FILES DO ROTEIRO.
+
+=====================================================================
+MATRIZ DE CONFORMIDADE — SEÇÕES 1 A 38
+=====================================================================
+
+01. OBJETIVO GERAL — IMPLEMENTADO
+- Projeto recebe SCRIPT + REQUIREMENTS.
+- Pipeline automático interpreta, busca, materializa, faz QA técnico/visual, congela, cataloga e exporta.
+- O loop do projeto pode executar até 20 ciclos por chamada, com trava de progresso.
+
+02. PAPEL DO SUPERVISOR IA — IMPLEMENTADO
+- lib/ai-supervisor.ts centraliza decisões semânticas.
+- Supervisor nunca gera imagem, fundo nem composição criativa.
+- Dispatcher em lib/automatic-projects.ts executa a decisão retornada.
+
+03. REGRA DE OURO — IMPLEMENTADO
+- Conteúdo semanticamente errado não é “salvo” por edição.
+- Correções internas aceitas são exclusivamente técnicas e somente em ISOLATED.
+
+04. MOTOR ATUAL -> MOTOR DESEJADO — IMPLEMENTADO
+- Fluxo integrado: normalização -> linking -> maturidade -> search plan -> coleta -> materialização -> QA técnico -> QA visual -> decisão -> freeze/catalogação -> ZIP.
+
+05. SEMANTIC_LINKING — IMPLEMENTADO
+- Supervisor retorna reference, universe_reference, reference_type, semantic_class, confidence, queries e alternatives_relink.
+- Provider IA pode escolher referências abertas/dinâmicas.
+- Fallback determinístico contém referências conhecidas para manter execução segura quando não há IA configurada.
+
+06. MATURIDADE DA BIBLIOTECA — IMPLEMENTADO E VALIDADO NO DISPATCHER
+- Library-first somente quando há >=5 variações aprovadas próximas.
+- USE_LIBRARY_ASSET é revalidado no banco antes da execução; uma resposta da IA não consegue furar a regra de maturidade.
+
+07. SEARCH_PLANNER_IA — IMPLEMENTADO
+- Queries, negative_terms, preferred_sources, preferred_hosts, avoid_hosts e max_rounds entram no sourcePlan real do coletor.
+- A ordem de fontes é alterada por item.
+- Termos negativos são aplicados às fontes de descoberta compatíveis.
+- Hosts preferidos e hosts a evitar afetam filtragem/ranking das candidatas.
+
+08. CLASSIFICAÇÃO DO ITEM — IMPLEMENTADO
+- SemanticClass cobre PERSONAGEM_ANIME, PERSONAGEM_CARTOON, PERSONAGEM_GEEK, GAME_RENDER, CENARIO_ANIME, CENARIO_REAL, OBJETO_GEEK, ARMA, VEICULO, MEME, PNG_ISOLADO e FOTO_REAL_FALLBACK.
+- A classe altera o source plan.
+
+09. TROCAS DE URL/FONTE/CONSULTA/REFERÊNCIA — IMPLEMENTADO
+- Ações reconhecidas e despachadas: USE_LIBRARY_ASSET, START_EXTERNAL_SEARCH, TRY_NEXT_QUERY, TRY_NEXT_SOURCE, TRY_NEXT_CANDIDATE, MATERIALIZE_URL, APPLY_TECHNICAL_FIX, APPROVE_AND_FREEZE, REJECT_AND_NEXT_CANDIDATE, RELINK_ITEM, CANCEL_ITEM, PROBE_URL e WAIT_FOR_VISUAL_QA.
+
+10. RELINK AUTOMÁTICO — IMPLEMENTADO
+- SEARCH_EXHAUSTED/BAD_REFERENCE envia contexto e histórico ao Supervisor.
+- Nova referência/query/source plan reabre o termo sem depender do chat.
+- Orçamento impede loop infinito.
+
+11. SEPARAÇÃO DAS FALHAS — IMPLEMENTADO
+- SOURCE_NOT_CONFIGURED não consome rodada.
+- SOURCE_TIMEOUT, SOURCE_EMPTY, MATERIALIZATION_FAILURE, BAD_QUERY/BAD_REFERENCE e falhas de QA ficam registradas e direcionam a próxima ação.
+
+12. ESTADOS RÍGIDOS — IMPLEMENTADO
+- PARA_ANALISE só é mantido quando existe candidata materializada pronta para QA.
+- Após rejeição, sem outra candidata materializada, o termo volta para PENDENTE.
+- COMPLETED passa pelo gate final; encerramento manual pendente usa FORCED_CLOSED.
+
+13. QA VISUAL POR IA — IMPLEMENTADO
+- O arquivo real do R2 é enviado ao provider multimodal com termo, referência, contexto, preset, slot e restrições.
+- Decisões do provider são despachadas automaticamente.
+- Sem provider multimodal configurado, o fallback retorna WAIT_FOR_VISUAL_QA e nunca inventa aprovação.
+
+14. CORREÇÃO TÉCNICA DETERMINÍSTICA — IMPLEMENTADO
+- Operações internas: REMOVER_FUNDO/ALPHA, HALO, FEATHER_LEVE, FRAGMENTOS, CROP, ENQUADRAMENTO, RESIZE, UPSCALE_TECNICO, FORMATO e COMPRESSAO.
+- Conteúdo CONTEXTUAL não pode usar essa rota.
+- Após correção, arquivo derivado volta para READY_FOR_VISUAL_QA.
+- Máximo de 2 correções técnicas sem resolução; depois relink.
+
+15. MEMÓRIA POR ITEM — IMPLEMENTADO
+- reference_history, query_history, source_history, host_history, candidate_history, materialization_history, qa_history, failure_history, current_strategy e attempt_budget.
+- Atualizações fazem merge com o estado mais recente para não perder histórico entre ações consecutivas.
+
+16. FONTES SEM CHAVE — IMPLEMENTADO
+- SOURCE_NOT_CONFIGURED/SKIPPED; não consome rodada nem falha semanticamente o item.
+
+17. RANKING DE HOSTS — IMPLEMENTADO
+- Supervisor recebe preferred_hosts, stable_hosts, bad_hosts, circuit_breaker_open, score, classificação, technical_rate, visual_rate, latência média/p95, sucessos/falhas e aprovados/rejeitados.
+- Coletor usa preferred_hosts/avoid_hosts no caminho real de seleção.
+
+18. CONTRATO PADRÃO DE ENTRADA — IMPLEMENTADO
+- SupervisorInput contém event, project, item, library_state, strategy_state, telemetry, candidates e image quando há QA visual.
+
+19. CONTRATO PADRÃO DE SAÍDA — IMPLEMENTADO
+- SupervisorOutput contém action, reason, reference, queries, filtros, fontes/hosts, URLs/assets, correções, QA labels e metadados do provider.
+
+20. CICLO AUTOMÁTICO — IMPLEMENTADO
+- processAutomaticProject executa coleta -> sync -> materialização -> QA IA -> correção/rejeição/relink -> reconciliação repetidamente.
+- Interrompe por conclusão, orçamento, ausência de progresso ou dependência real de provider visual.
+
+21. CUSTO E ORÇAMENTO — IMPLEMENTADO
+- max_rounds por estratégia.
+- histórico evita repetir queries/candidatas/URLs.
+- 2 correções técnicas sem melhora forçam relink.
+- host ruim/circuit breaker é evitado.
+- item congelado não é reaberto por falha em outro item.
+
+22. ESTADOS TERMINAIS — IMPLEMENTADO
+- Itens: FROZEN/APPROVED, CANCELLED, FAILED_SEMANTIC, FAILED_INFRASTRUCTURE.
+- Projetos: COMPLETED, COMPLETED_WITH_WARNINGS, FORCED_CLOSED, FAILED.
+
+23. ENDPOINT / MÓDULO — IMPLEMENTADO
+- POST /api/ai/supervisor owner-only.
+- Módulo interno lib/ai-supervisor.ts.
+- Não depende obrigatoriamente de um segundo serviço HTTP: pode chamar provider direto.
+
+24. INFRA DE MATERIALIZAÇÃO — PRESERVADA E INTEGRADA
+- Materialização real, conversão, R2 e arquivo para QA continuam sendo a camada executora.
+
+25. FASES 1/2/3 — IMPLEMENTADAS
+- Linking, planner, contrato, visual QA, relink, memória, falhas, host ranking, fontes por classe, fechamento rígido, custo e histórico estão conectados.
+
+26. RESUMO EXECUTIVO — IMPLEMENTADO
+- Supervisor decide; Biblioteca executa.
+
+27. PROJECT_STATE_RECONCILIATION — IMPLEMENTADO
+- Recalcula itens/progresso a partir de materializações, arquivos, frozen assets, usos e target files, inclusive rotas manuais/alternativas.
+
+28. IDEMPOTÊNCIA — IMPLEMENTADO
+- Hash de SCRIPT/REQUIREMENTS.
+- IDs determinísticos por project+version+item_key.
+- Reprocessamento reaproveita registros; lote novo somente para gaps.
+
+29. FAMÍLIA SEMÂNTICA + FAN-OUT — IMPLEMENTADO E ENDURECIDO
+- Seed única por família.
+- ISOLATED pode reutilizar por equivalência semântica/visual.
+- CONTEXTUAL inclui contexto/papel visual na chave para impedir fan-out entre ações/cenas diferentes.
+- Todos os membros mantêm target file e uso próprios.
+
+30. CHUNKING — IMPLEMENTADO
+- Operações em lote usam blocos (padrão até 40) e merge determinístico.
+- Exportação/reconciliação/consultas de IDs não pressupõem IN(...) ilimitado.
+
+31. CONTEXTUAL VS ISOLATED — IMPLEMENTADO
+- composition_class persistido/enriquecido com SCRIPT (preset/slot/cena).
+- CONTEXTUAL exige a cena existente na fonte e não aceita montagem/correção que a transforme semanticamente.
+
+32. LINHAGEM TÉCNICA — IMPLEMENTADO
+- source_file_id, technical_operation, technical_parameters, derived file e QA pendente ficam persistidos.
+- Arquivo original não é apagado/substituído.
+
+33. ZIP POR TARGET FILE — IMPLEMENTADO
+- Mesmo asset pode aparecer em múltiplos nomes finais.
+- EXPECTED_TARGET_FILES é comparado com ZIP_TARGET_FILES.
+- IMPORTACAO.txt incluído.
+
+34. EXPORTAÇÃO PARCIAL — IMPLEMENTADO
+- Subconjunto explícito consulta/valida/exporta apenas o subconjunto.
+
+35. GATE FINAL — IMPLEMENTADO
+- Verifica expected/resolved target files, frozen assets, objetos físicos, pendências, missing, ZIP, IMPORTACAO.txt, nomes e progresso reconciliado.
+- Gate falho bloqueia COMPLETED.
+
+36. PROBE TÉCNICA / CIRCUIT BREAKER — IMPLEMENTADO
+- Probe explícita registrada, janela anti-repetição e atualização de saúde.
+- No dispatcher, probe aprovada materializa a URL; probe falha devolve o item à busca.
+
+37. APRENDIZADOS DOS 140 ITENS — IMPLEMENTADO
+- Famílias/seed/fan-out, descarte rápido, memória anti-repetição, correção só em isolated, reconciliação, chunking e target-file export.
+
+38. V1.1 — IMPLEMENTADO
+- Camada semântica + consistência operacional estão conectadas no pipeline real.
+
+=====================================================================
+PROVEDORES IA SUPORTADOS
+=====================================================================
+
+ORDEM DE TENTATIVA
+1. SUPERVISOR_IA_ENDPOINT (opcional, compatibilidade com serviço externo)
+2. Workers AI binding `AI`, quando disponível no runtime
+3. Cloudflare AI REST direto
+4. OpenAI Responses direto
+5. fallback determinístico seguro
+
+CLOUDFLARE AI REST
+- CLOUDFLARE_ACCOUNT_ID
+- CLOUDFLARE_AI_API_TOKEN ou CLOUDFLARE_API_TOKEN
+- CLOUDFLARE_AI_GATEWAY_ID opcional (padrão: default)
+- SUPERVISOR_CLOUDFLARE_MODEL opcional
+- Modelo padrão no código: @cf/qwen/qwen3.8-27b
+
+OPENAI RESPONSES
+- OPENAI_API_KEY
+- SUPERVISOR_OPENAI_MODEL opcional
+- Modelo padrão no código: gpt-5.6-sol
+
+SERVIÇO EXTERNO OPCIONAL
+- SUPERVISOR_IA_ENDPOINT
+- SUPERVISOR_IA_TOKEN opcional
+
+SEGURANÇA DO FALLBACK
+Sem provider multimodal configurado:
+- linking/classificação/search planner/relink continuam funcionando pelo fallback;
+- QA visual permanece pendente;
+- nenhuma imagem é aprovada visualmente por heurística.
+
+=====================================================================
+ARQUIVOS PRINCIPAIS ALTERADOS NA V39
+=====================================================================
+- lib/ai-supervisor.ts
+- lib/automatic-projects.ts
+- lib/auto-collector.ts
+- lib/materializer.ts
+- lib/mcp-tools.ts
+- app/api/ai/supervisor/route.ts
+- app/mcp/route.ts
+- README.md
+- docs/IMPLEMENTACAO_BIBLIOTECA9_V39.txt
+
+A migração V1.1 permanece em:
+- drizzle/0008_supervisor_v1_1.sql
+- drizzle/meta/0008_snapshot.json
+- drizzle/meta/_journal.json
+
+OBSERVAÇÃO DE EXECUÇÃO
+A implementação está no código. Para QA visual autônomo em produção, o runtime precisa ter pelo menos um provider multimodal configurado. Isso é uma dependência de credencial/runtime, não uma dependência do chat nem um módulo ausente.

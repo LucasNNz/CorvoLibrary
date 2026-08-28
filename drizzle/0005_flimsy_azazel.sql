@@ -1,0 +1,101 @@
+CREATE TABLE `collection_batches` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`status` text DEFAULT 'CRIADO' NOT NULL,
+	`terms_text` text NOT NULL,
+	`max_urls_per_term` integer DEFAULT 100 NOT NULL,
+	`max_sources_per_term` integer DEFAULT 20 NOT NULL,
+	`max_rounds_per_term` integer DEFAULT 5 NOT NULL,
+	`max_term_minutes` integer DEFAULT 45 NOT NULL,
+	`max_total_minutes` integer DEFAULT 480 NOT NULL,
+	`total_terms` integer DEFAULT 0 NOT NULL,
+	`total_target` integer DEFAULT 0 NOT NULL,
+	`total_collected` integer DEFAULT 0 NOT NULL,
+	`report_text` text,
+	`cancelled` integer DEFAULT false NOT NULL,
+	`created_at` integer NOT NULL,
+	`started_at` integer,
+	`completed_at` integer,
+	`updated_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `collection_candidates` (
+	`id` text PRIMARY KEY NOT NULL,
+	`batch_id` text NOT NULL,
+	`term_id` text NOT NULL,
+	`source_id` text NOT NULL,
+	`url` text NOT NULL,
+	`normalized_url` text NOT NULL,
+	`thumbnail` text,
+	`estimated_type` text,
+	`priority` integer DEFAULT 1 NOT NULL,
+	`status` text DEFAULT 'CANDIDATA' NOT NULL,
+	`failure_reason` text,
+	`sha256` text,
+	`materialization_batch_id` text,
+	`materialization_item_id` text,
+	`materialization_file_id` text,
+	`asset_id` text,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`batch_id`) REFERENCES `collection_batches`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`term_id`) REFERENCES `collection_terms`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`source_id`) REFERENCES `collection_sources`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `collection_source_runs` (
+	`id` text PRIMARY KEY NOT NULL,
+	`batch_id` text NOT NULL,
+	`term_id` text NOT NULL,
+	`source_id` text NOT NULL,
+	`found_count` integer DEFAULT 0 NOT NULL,
+	`unique_count` integer DEFAULT 0 NOT NULL,
+	`materialized_count` integer DEFAULT 0 NOT NULL,
+	`failure_count` integer DEFAULT 0 NOT NULL,
+	`duration_ms` integer DEFAULT 0 NOT NULL,
+	`status` text NOT NULL,
+	`detail` text,
+	`created_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `collection_sources` (
+	`id` text PRIMARY KEY NOT NULL,
+	`name` text NOT NULL,
+	`base_url` text NOT NULL,
+	`method` text DEFAULT 'GET' NOT NULL,
+	`query_param` text DEFAULT 'q' NOT NULL,
+	`limit_param` text DEFAULT 'limit' NOT NULL,
+	`image_path` text NOT NULL,
+	`thumbnail_path` text,
+	`priority` integer DEFAULT 3 NOT NULL,
+	`active` integer DEFAULT true NOT NULL,
+	`api_key_env` text,
+	`api_key_header` text,
+	`note` text,
+	`query_count` integer DEFAULT 0 NOT NULL,
+	`found_count` integer DEFAULT 0 NOT NULL,
+	`unique_count` integer DEFAULT 0 NOT NULL,
+	`materialized_count` integer DEFAULT 0 NOT NULL,
+	`failure_count` integer DEFAULT 0 NOT NULL,
+	`total_duration_ms` integer DEFAULT 0 NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE `collection_terms` (
+	`id` text PRIMARY KEY NOT NULL,
+	`batch_id` text NOT NULL,
+	`term` text NOT NULL,
+	`target_quantity` integer NOT NULL,
+	`kind` text DEFAULT 'qualquer' NOT NULL,
+	`universe` text,
+	`status` text DEFAULT 'PENDENTE' NOT NULL,
+	`collected_count` integer DEFAULT 0 NOT NULL,
+	`attempts` integer DEFAULT 0 NOT NULL,
+	`rounds` integer DEFAULT 0 NOT NULL,
+	`source_cursor` integer DEFAULT 0 NOT NULL,
+	`failure_reason` text,
+	`started_at` integer,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`batch_id`) REFERENCES `collection_batches`(`id`) ON UPDATE no action ON DELETE no action
+);

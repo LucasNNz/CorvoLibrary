@@ -1,0 +1,30 @@
+CORVO LIBRARY V61.4 — FAST PUSH PROJETO COMPLETO POR AGENTES
+
+IMPLEMENTADO
+- Mesmo project_id recebe contribuições de agentes de roteiro, imagens, thumbnails e títulos.
+- FAST PUSH de imagens continua usando a ponte canônica PITEM/Pendentes/QA da V61.3.
+- THUMBS são candidatas no nível do projeto, sem PITEM obrigatório, via URL ou arquivo do ChatGPT.
+- TÍTULOS são registros estruturados no D1, sem arquivo físico por ideia.
+- Aprovar, rejeitar e selecionar são decisões independentes e idempotentes.
+- É possível manter várias opções aprovadas e trocar a selecionada depois.
+- Exportação de produção é separada do ZIP operacional da esteira.
+- ZIP completo: ROTEIRO.txt, IMAGENS_NECESSARIAS.txt, IMAGENS/, THUMBS/, TITULOS.txt e PROJETO.json.
+- production_revision é incrementada quando arquivos, itens resolvidos, thumbs ou títulos mudam.
+- production_zip_revision identifica se o pacote exportado está atual ou desatualizado.
+- Exclusão de projeto remove somente arquivos de produção próprios do projeto; bytes reutilizados do catálogo não são apagados.
+
+ROTAS MCP
+- fast_push_thumbs_url_lote
+- fast_push_thumb_arquivo
+- fast_push_titulos
+- listar_pacote_producao_projeto
+- decidir_thumbs_projeto
+- decidir_titulos_projeto
+- exportar_projeto_completo_zip
+
+ROTAS HTTP OWNER
+- GET/POST/PATCH /api/projects/:id/production
+- GET /api/projects/:id/production-zip
+
+PRINCÍPIO
+O projeto é o container central. Agentes especializados só precisam conhecer project_id e o tipo de contribuição. Imagens de roteiro mantêm o caminho PITEM; thumbs e títulos pertencem ao projeto como um todo. A Biblioteca persiste, organiza, registra decisões e exporta o pacote de produção.

@@ -1,0 +1,404 @@
+CORVO LIBRARY / BIBLIOTECA SEMÂNTICA 14
+IMPLEMENTAÇÃO V56 — FAST CONTROL PLANE + PARALLEL DATA PLANE
+Data: 2026-08-27
+
+======================================================================
+1. OBJETIVO IMPLEMENTADO
+======================================================================
+
+A V56 parte da V55 e aplica a especificação BS14_CORRECOES_PERFORMANCE_COMPLETAS_APP_E_PIPELINE_V2.
+
+Objetivo estrutural:
+- reduzir o custo de controle do APP/MCP;
+- impedir que uma pendência individual bloqueie o projeto;
+- processar projetos grandes de forma larga e paralela;
+- usar QA/relink/materialização em lote;
+- preservar qualidade, assets congelados, leases, multi-worker e multi-nicho;
+- expor telemetria suficiente para medir os gargalos reais.
+
+Arquitetura alvo:
+FAST CONTROL PLANE + PARALLEL DATA PLANE.
+
+======================================================================
+2. FAST CONTROL PLANE
+======================================================================
+
+2.1 Contadores materializados e state_version
+
+A tabela automatic_projects passa a manter:
+- total_items;
+- approved_count;
+- frozen_count;
+- collecting_count;
+- materializing_count;
+- waiting_qa_count;
+- relink_count;
+- technical_count;
+- waiting_seed_count;
+- failed_count;
+- pending_count;
+- state_version;
+- last_frozen_at.
+
+As mutações relevantes atualizam o resumo/versionamento. Leituras simples não precisam remontar o projeto inteiro a partir de todos os itens.
+
+2.2 Leituras compactas
+
+- obter_projeto_automatico usa getAutomaticProjectSummary().
+- listar_projetos_automaticos usa listAutomaticProjectsFast().
+- obter_detalhes_projeto_automatico fica disponível quando o payload completo é realmente necessário.
+- obter_estado_supervisor deixa de reconciliar implicitamente o projeto.
+- R2 não é consultado para montar o resumo operacional.
+
+2.3 Paginação por cursor
+
+A listagem rápida de projetos usa cursor estável `updated_at|id`, evitando OFFSET crescente.
+
+2.4 Snapshot operacional + delta sync
+
+Novo MCP:
+- obter_snapshot_operacional(projeto_id, since_version, limite_pacote)
+
+Retorna em uma chamada:
+- project version;
+- counts;
+- next_actions;
+- até 20 QA;
+- até 20 relinks;
+- até 20 correções técnicas;
+- decisões relevantes;
+- workers;
+- throughput;
+- detector de pipeline travado.
+
+Se since_version já for a versão atual:
+- changed=false;
+- não devolve novamente o estado pesado.
+
+2.5 Operações compostas / write + return state
+
+Novos fluxos em lote:
+- aplicar_decisoes_supervisor_lote;
+- relinkar_itens_lote;
+- materializar_urls_lote.
+
+A aplicação de decisões do Supervisor retorna persistência + versão + contadores + snapshot, evitando WRITE → GET → GET para confirmação/próximo passo.
+
+2.6 Idempotência e recuperação após timeout
+
+Foi criada a tabela operation_results.
+
+Mutações compostas aceitam operation_id e persistem:
+- RUNNING;
+- COMPLETED;
+- FAILED;
+- resultado;
+- erro;
+- timestamps.
+
+Novo MCP:
+- obter_resultado_operacao(operation_id).
+
+Assim, timeout do cliente não obriga a repetir trabalho já persistido.
+
+======================================================================
+3. INSTRUMENTAÇÃO E PERFORMANCE MCP
+======================================================================
+
+3.1 Auditoria MCP ampliada
+
+A estrutura mcp_audit ganhou campos para:
+- request_id;
+- started_at;
+- finished_at;
+- duration_ms;
+- auth_ms;
+- parse_ms;
+- db_ms;
+- db_query_count;
+- r2_ms;
+- r2_request_count;
+- external_http_ms;
+- external_http_count;
+- serialization_ms;
+- queue_ms;
+- total_ms;
+- response_bytes;
+- rows_read;
+- rows_written;
+- cache_hit;
+- cold_start_flag.
+
+A camada MCP já persiste duração total, auth/parse, serialização, bytes de resposta e cold-start. Os campos de breakdown profundo estão no schema para instrumentação progressiva dos adaptadores internos; não são declarados como medição exata quando a operação não os preenche.
+
+3.2 Painel MCP de latência
+
+Novo MCP:
+- obter_performance_mcp(horas).
+
+Retorna:
+- calls;
+- P50/P95/P99;
+- WARN >300 ms;
+- SLOW >1 s;
+- CRITICAL >3 s;
+- top ferramentas lentas;
+- top ferramentas mais chamadas;
+- top payloads.
+
+======================================================================
+4. ÍNDICES D1 / HOT PATHS
+======================================================================
+
+Migração nova:
+- drizzle/0013_fast_control_parallel_data.sql
+
+A V56 adiciona índices alinhados a:
+- project_items por projeto/status/prioridade;
+- target filename;
+- candidatas Supervisor por projeto/item/status;
+- decisões Supervisor;
+- materializações;
+- assets;
+- collection jobs;
+- leases;
+- worker_work_items FIFO.
+
+Durante a validação foi encontrado e corrigido um erro real na migração 0013:
+- índice apontava para supervisor_project_candidates.project_item_id;
+- coluna real é item_id;
+- corrigido antes do empacotamento.
+
+EXPLAIN QUERY PLAN representativo confirmou uso dos índices quentes, inclusive o índice FIFO dos workers sem sort temporário.
+
+======================================================================
+5. PARALLEL DATA PLANE
+======================================================================
+
+5.1 SKIP WAITING
+
+O loop de projeto trata QA/relink/correção/waiting seed como bloqueio do ITEM, não do PROJETO.
+
+Estados de espera liberam o fluxo para os demais itens.
+
+5.2 Coleta larga
+
+executeCollection() trabalha múltiplos termos em paralelo:
+- padrão: 10 termos;
+- configurável até 20;
+- Promise.allSettled;
+- falha de um termo é isolada e não encerra os demais.
+
+5.3 Materialização paralela
+
+- concorrência global existente permanece 8;
+- limite por host permanece controlado;
+- configuração legada `collection_parallelism=3` é elevada para 8 somente quando ainda está no default antigo;
+- tuning explícito diferente de 3 é preservado.
+
+5.4 QA em lote
+
+O fluxo de QA faz prefetch em lote de itens/materializações e registra decisões por lote, removendo o padrão N+1 mais caro.
+
+5.5 Relink em lote
+
+Novo MCP relinkar_itens_lote trabalha até 20 itens numa única interação do Supervisor.
+
+5.6 Materialização em lote
+
+Novo MCP materializar_urls_lote trabalha até 20 itens e usa operation_id para idempotência.
+
+======================================================================
+6. INFRAESTRUTURA ÓBVIA NÃO VAI PARA O SUPERVISOR
+======================================================================
+
+A fila do Supervisor filtra ocorrências óbvias como:
+- HTTP_404;
+- HTTP_403;
+- SOURCE_EMPTY;
+- SOURCE_NOT_CONFIGURED;
+- BRAVE_DISCOVERY_NAO_CONFIGURADO;
+- DOWNLOAD_TIMEOUT;
+- RATE_LIMITED.
+
+SOURCE_NOT_CONFIGURED também desativa automaticamente a fonte de coleta correspondente, impedindo que a mesma falta de configuração consuma rodadas repetidas até ser reabilitada/configurada.
+
+======================================================================
+7. ROTEAMENTO POR UNIVERSO + COMPOSITION CLASS
+======================================================================
+
+sourcePolicyForItem() combina:
+- domínio/nicho;
+- universo;
+- compositionClass;
+- semanticClass;
+- kind;
+- source_profiles persistentes;
+- métricas aprendidas.
+
+Perfis específicos de universo/composição podem ativar strict_preferred_sources.
+
+O roteamento aprendido usa source_route_metrics por:
+- universo;
+- composition class;
+- fonte;
+- host.
+
+O score combina:
+- aprovação visual;
+- sucesso de materialização;
+- velocidade;
+- penalidade de falhas.
+
+Novo MCP:
+- obter_ranking_rotas_fontes.
+
+======================================================================
+8. CIRCUIT BREAKER ADAPTATIVO
+======================================================================
+
+A V56 deixa de tratar duas URLs ruins como razão automática para derrubar um host historicamente saudável.
+
+O threshold considera o histórico do host. Hosts com histórico >=20 sucessos e taxa >=80% exigem mais falhas recentes antes de abrir o breaker global. A URL ruim continua podendo ser descartada sem punir todo o domínio.
+
+======================================================================
+9. PIPELINE STALLED DETECTOR
+======================================================================
+
+O snapshot operacional marca pipeline_stalled quando:
+- há mais de 20 pendências;
+- não há novo progresso/congelamento por 10 minutos;
+- existe trabalho READY;
+- existe capacidade disponível.
+
+Diagnósticos possíveis:
+- QA_CONGESTIONADO;
+- RELINK_CONGESTIONADO;
+- CIRCUIT_BREAKER_ATIVO;
+- SUPERVISOR_PENDENTE;
+- CAPACIDADE_DISPONIVEL_COM_FILA;
+- MATERIALIZADOR_SEM_WORKER.
+
+======================================================================
+10. CACHE QUENTE
+======================================================================
+
+O ranking de rotas usa cache curto de 30 segundos e invalida quando métricas de rota mudam. Telemetrias já existentes preservam caches curtos onde apropriado.
+
+======================================================================
+11. MCP V56
+======================================================================
+
+Ferramentas: 156
+Handlers: 156
+Órfãos: 0
+Duplicados: 0
+
+Ferramentas principais acrescentadas/otimizadas nesta versão:
+- obter_snapshot_operacional
+- aplicar_decisoes_supervisor_lote
+- relinkar_itens_lote
+- materializar_urls_lote
+- obter_resultado_operacao
+- obter_performance_mcp
+- obter_ranking_rotas_fontes
+- obter_detalhes_projeto_automatico
+
+A política MCP de baixo risco/uso contínuo das versões anteriores é preservada.
+
+======================================================================
+12. VALIDAÇÕES FINAIS
+======================================================================
+
+Suíte combinada de regressão, excluindo rendered-html dependente de build:
+- 38/38 PASS
+
+Inclui testes de:
+- exclusão D1;
+- FIFO/multi-worker/multi-nicho;
+- política MCP;
+- previews Pendentes;
+- heartbeat/lease;
+- V56 performance.
+
+Teste V56 específico:
+- 12/12 PASS (incluído nos 38).
+
+Migrações em SQLite limpo com foreign_keys=ON:
+- 0000 -> 0013
+- 14/14 OK
+- collection_parallelism final default: 8
+- índices idx_*: 29
+
+Parse sintático TypeScript/TSX via TypeScript compiler global:
+- 48 arquivos
+- 0 erros de parse
+
+MCP:
+- 156 tools
+- 156 handlers
+- 0 órfãos
+- 0 duplicados
+
+======================================================================
+13. BUILD VINEXT — LIMITAÇÃO DO AMBIENTE
+======================================================================
+
+`npm run build` foi tentado.
+
+Resultado do ambiente atual:
+- vinext indisponível;
+- node_modules não instalado;
+- script orienta executar npm run install:ci.
+
+Em execuções anteriores deste mesmo ambiente, o install também encontrou indisponibilidade de acesso ao registry npm.
+
+Portanto:
+- NÃO declarar build Vinext aprovado;
+- rendered-html.test.mjs não pode rodar porque depende de dist/server/index.js gerado pelo build.
+
+Isto é separado das validações de lógica/migração/sintaxe acima.
+
+======================================================================
+14. ARQUIVOS PRINCIPAIS ALTERADOS V55 -> V56
+======================================================================
+
+- app/mcp/route.ts
+- db/schema.ts
+- drizzle/0013_fast_control_parallel_data.sql (novo)
+- lib/auto-collector.ts
+- lib/automatic-projects.ts
+- lib/materializer.ts
+- lib/mcp-risk-policy.ts
+- lib/mcp-tools.ts
+- lib/performance-control.ts (novo)
+- lib/supervisor-control.ts
+- lib/worker-orchestration.ts
+- tests/performance-v56-regression.test.mjs (novo)
+- testes de versão V55 atualizados para V56
+- README.md
+- docs/BS14_CORRECOES_PERFORMANCE_COMPLETAS_APP_E_PIPELINE_V2.txt
+
+======================================================================
+15. RESULTADO
+======================================================================
+
+A V56 troca o padrão operacional de:
+
+consultar -> esperar -> decidir 1 -> gravar -> consultar -> repetir
+
+para:
+
+snapshot/delta compacto
+-> pacote de trabalho
+-> decisões/materializações/relinks em lote
+-> backend continua em paralelo
+-> próximo delta.
+
+A regra estrutural permanece:
+UMA PENDÊNCIA BLOQUEIA SOMENTE O ITEM, NUNCA O PROJETO.
+
+E o desenho alvo passa a ser:
+FAST CONTROL PLANE + PARALLEL DATA PLANE.
+
+FIM

@@ -1,0 +1,1180 @@
+ESPECIFICACAO — SUPERVISOR IA VIA MCP + COLETA AUTONOMA NOTURNA
+Corvo Library / Biblioteca Semantica
+Versao conceitual consolidada
+Data: 2026-08-27
+
+======================================================================
+1. OBJETIVO
+======================================================================
+
+Substituir o Supervisor IA interno baseado em modelos Cloudflare
+(Qwen, Llama etc.) por uma arquitetura mais simples:
+
+- o APP/BIBLIOTECA executa;
+- o MCP expoe estado, evidencias e controles;
+- o ChatGPT atua como Supervisor operacional;
+- a coleta automatica pode continuar funcionando sem IA;
+- o QA visual e decisoes adaptativas podem ser feitos pelo ChatGPT via MCP;
+- configuracoes eficientes descobertas durante a operacao podem ser salvas
+  e reutilizadas nas proximas execucoes.
+
+A ideia central e:
+
+BIBLIOTECA = MEMORIA + EXECUTOR + COLETOR
+MCP        = SISTEMA DE CONTROLE
+CHATGPT    = SUPERVISOR
+CLOUDFLARE AI / LLAMA / QWEN = NAO OBRIGATORIOS
+
+======================================================================
+2. ALTERACAO PRINCIPAL DO SUPERVISOR
+======================================================================
+
+O campo atual de Supervisor IA nao deve mais representar:
+
+- escolha de modelo;
+- Qwen;
+- Llama;
+- Workers AI;
+- consumo de Neurons;
+- JSON Mode;
+- provider Cloudflare;
+- licenca do Llama.
+
+O Supervisor IA passa a ser apenas uma funcao:
+
+SUPERVISOR IA
+[ LIGADO / DESLIGADO ]
+
+Significado:
+
+SUPERVISOR IA = DESLIGADO
+----------------------------------------
+O app executa apenas processos deterministicos e configurados.
+
+Pode:
+- coletar;
+- pesquisar;
+- testar URLs;
+- materializar;
+- converter formatos;
+- validar requisitos tecnicos;
+- aplicar circuit breaker;
+- respeitar timeout;
+- salvar arquivos;
+- acumular candidatas em PARA_ANALISE;
+- registrar metricas;
+- gerar logs;
+- usar configuracoes persistentes;
+- continuar coleta noturna.
+
+Nao deve:
+- aprovar semanticamente imagens;
+- inventar decisao visual;
+- fingir QA visual;
+- relinkar de forma criativa sem regra;
+- criar representacao visual;
+- montar imagens;
+- reduzir regua de qualidade.
+
+SUPERVISOR IA = LIGADO
+----------------------------------------
+O app continua executando deterministicamente, mas o MCP libera
+controle supervisor completo para o ChatGPT.
+
+O ChatGPT pode:
+- ler o estado consolidado;
+- ver gaps;
+- ver candidatas reais materializadas;
+- inspecionar visualmente imagens;
+- aprovar;
+- rejeitar;
+- pedir relink;
+- trocar referencia;
+- trocar fonte;
+- alterar query;
+- ajustar timeout;
+- bloquear/desbloquear host;
+- mudar prioridade de fonte;
+- cancelar uma rota;
+- pausar item;
+- retomar item;
+- mandar continuar;
+- aplicar somente correcoes tecnicas permitidas;
+- salvar configuracoes que funcionaram;
+- ajustar perfis de coleta;
+- congelar aprovados;
+- trabalhar somente nos gaps.
+
+IMPORTANTE:
+"LIGAR SUPERVISOR IA" NAO SIGNIFICA CHAMAR UMA API DE IA.
+
+Significa:
+CHATGPT VIA MCP = SUPERVISOR OPERACIONAL.
+
+======================================================================
+3. INTERFACE RECOMENDADA
+======================================================================
+
+A interface pode ficar simples:
+
+SUPERVISOR IA
+[ LIGADO ]
+
+Supervisor: ChatGPT via MCP
+Controle operacional: COMPLETO
+QA visual externo: ATIVO
+Configuracoes persistentes: ATIVAS
+Coleta autonoma: ATIVA
+
+Remover ou esconder do fluxo principal:
+- modelo Qwen;
+- modelo Llama;
+- token Workers AI;
+- ordem de providers;
+- Neurons;
+- JSON Mode;
+- botao Salvar Llama;
+- configuracao de provider Cloudflare.
+
+Esses recursos podem permanecer apenas como fallback tecnico opcional,
+fora do caminho principal, se desejado futuramente.
+
+======================================================================
+4. ARQUITETURA GERAL
+======================================================================
+
+Fluxo principal:
+
+ROTEIRO
+  |
+  v
+REFERENCIA CONHECIDA
+  |
+  v
+BIBLIOTECA OU BUSCA EXTERNA
+  |
+  v
+COLETA / MATERIALIZACAO DETERMINISTICA
+  |
+  v
+PARA_ANALISE
+  |
+  v
+CHATGPT SUPERVISOR VIA MCP
+  |
+  +--> APROVAR
+  +--> REJEITAR
+  +--> RELINK
+  +--> TROCAR ROTA
+  +--> CORRECAO TECNICA PERMITIDA
+  |
+  v
+CONGELAR APROVADOS
+  |
+  v
+TRABALHAR SOMENTE NOS GAPS
+  |
+  v
+ZIP FINAL
+
+Ciclo operacional do Supervisor:
+
+ESTADO
+  -> DECISAO CHATGPT
+  -> EXECUCAO PELO APP
+  -> NOVO ESTADO
+  -> NOVA DECISAO
+  -> ...
+
+======================================================================
+5. COLETA NOTURNA
+======================================================================
+
+Criar um modo:
+
+MODO COLETA NOTURNA
+
+Objetivo:
+nao tentar chegar ao asset final perfeito durante a coleta.
+
+Objetivo da noite:
+MATERIALIZAR O MAXIMO DE CANDIDATAS TECNICAMENTE VALIDAS
+COM CHANCE RAZOAVEL DE SERVIR.
+
+A coleta noturna pode funcionar sem Supervisor IA ligado.
+
+Fluxo:
+
+conceitos
+  -> configuracoes salvas
+  -> fontes prioritarias
+  -> queries
+  -> teste de URLs
+  -> materializacao
+  -> validacao tecnica
+  -> salvar em PARA_ANALISE
+
+Durante a noite, o sistema NAO precisa:
+- decidir semanticamente a melhor imagem;
+- aprovar visualmente;
+- insistir em uma candidata ruim;
+- tentar "salvar" imagem errada;
+- montar contexto;
+- criar imagem;
+- usar LLM para cada microdecisao.
+
+Pode acumular:
+- 5;
+- 10;
+- 20;
+- ou mais candidatas por conceito,
+conforme configuracao e custo.
+
+Importante:
+preview, thumbnail, pagina e link nao contam como candidata real.
+
+Candidata real exige:
+VISUAL_DISPONIVEL + MATERIALIZACAO_OK
+
+======================================================================
+6. REFINAMENTO PELA MANHA
+======================================================================
+
+Pela manha, com Supervisor IA ligado:
+
+1. ChatGPT chama o MCP.
+2. Recebe resumo da coleta.
+3. Ve candidatas materializadas.
+4. Faz QA visual.
+5. Congela boas.
+6. Rejeita ruins.
+7. Relinka gaps.
+8. Ajusta fontes/queries/configuracoes.
+9. Salva os aprendizados operacionais.
+10. Manda continuar apenas nos gaps.
+
+Exemplo de resumo:
+
+100 conceitos
+1.840 URLs testadas
+426 arquivos materializados
+318 PARA_ANALISE
+73 conceitos com candidatas
+27 gaps
+12 hosts bloqueados por circuit breaker
+4 novas rotas com alta taxa de sucesso
+
+O ChatGPT deve comecar pelo que ja existe,
+e nao reiniciar a busca do zero.
+
+======================================================================
+7. QA VISUAL VIA MCP
+======================================================================
+
+O app deve disponibilizar os arquivos reais para inspecao visual.
+
+Fluxo:
+
+materializou candidata
+  -> status PARA_QA_VISUAL
+  -> MCP entrega arquivo real
+  -> ChatGPT ve a imagem
+  -> decisao
+  -> app executa
+
+Decisoes suportadas:
+
+APROVADO
+REJEITADO
+RELINK_REQUIRED
+CORRECAO_TECNICA_PERMITIDA
+
+O QA visual deve verificar:
+
+- referencia correta;
+- personagem/objeto/local correto;
+- conceito correto;
+- universo correto;
+- traje/visual correto;
+- preset correto;
+- estilo anime/cartoon/geek;
+- acao correta;
+- cenario correto;
+- transparencia real quando exigida;
+- watermark;
+- texto;
+- logo;
+- patch;
+- checkerboard falso;
+- fundo falso;
+- halo;
+- fragmentos;
+- bordas;
+- qualidade;
+- resolucao;
+- enquadramento.
+
+======================================================================
+8. REGRAS VISUAIS DO PIPELINE
+======================================================================
+
+REGRA ABSOLUTA:
+NAO CRIAR A REPRESENTACAO VISUAL DO ROTEIRO.
+
+Fluxo:
+ROTEIRO
+-> REFERENCIA CONHECIDA
+-> BIBLIOTECA OU BUSCA
+-> SELECAO
+-> MATERIALIZACAO
+-> QA
+
+Para cada termo:
+"Qual personagem, objeto, cena, local, veiculo, arma ou elemento conhecido
+de anime, cartoon, game, serie, filme ou universo geek ja representa isso?"
+
+Preferencia de nicho:
+ANIME
+-> CARTOON
+-> GEEK
+-> GAME/SERIE/FILME COMPATIVEL
+-> FOTO REAL COMO ULTIMO FALLBACK
+
+CONTEXTUAIS:
+- devem vir praticamente prontos;
+- personagem/objeto + acao + cenario pertencem a mesma imagem;
+- nao montar contextual.
+
+ISOLADOS:
+- podem usar PNG/render pronto;
+- ou imagem correta com fundo simples;
+- remover SOMENTE o fundo.
+
+Presets com transparencia obrigatoria:
+- FOCO_4
+- CENTRAL_2
+
+Demais presets:
+- devem ter fundo real;
+- nao usar fundo chapado/solido como substituto.
+
+======================================================================
+9. CORRECOES TECNICAS PERMITIDAS
+======================================================================
+
+Permitido:
+- alpha;
+- feather leve;
+- remover halo;
+- remover fragmentos de fundo;
+- crop;
+- enquadramento;
+- resize;
+- upscale tecnico;
+- formato;
+- compressao;
+- remover somente fundo simples quando permitido.
+
+Proibido sem autorizacao:
+- gerar imagem por IA;
+- montar cenas;
+- combinar imagens;
+- criar fundo artificial;
+- adicionar objetos;
+- duplicar personagens;
+- fabricar multidao;
+- composicao local como fallback;
+- editar referencia semanticamente errada para "salvar";
+- aprovar preview;
+- aprovar link nao materializado;
+- baixar regua de qualidade.
+
+Se a representacao correta nao existe:
+RELINKAR.
+
+======================================================================
+10. REGRA DE FALHA E EFICIENCIA
+======================================================================
+
+Se uma candidata falhar:
+NAO RETENTAR A MESMA IMAGEM REPETIDAMENTE.
+
+Ordem:
+1. outra fonte da mesma referencia;
+2. outra candidata da mesma referencia;
+3. outra referencia conhecida;
+4. biblioteca madura, se aplicavel.
+
+Depois de 2 tentativas tecnicas sem melhora clara:
+REAVALIAR ANTES DE UMA TERCEIRA.
+
+Custo afundado nao justifica continuar.
+
+Se uma rota estiver:
+- lenta;
+- cara;
+- repetitiva;
+- fraca;
+trocar de rota automaticamente ou por decisao do Supervisor.
+
+Aprovou:
+CONGELA.
+
+Nunca reabrir aprovados porque outros falharam.
+
+Trabalhar somente nos gaps.
+
+======================================================================
+11. BIBLIOTECA PRIMEIRO — REGRA DE MATURIDADE
+======================================================================
+
+Para cada item semantico:
+formar inicialmente 5 variacoes proximas aprovadas.
+
+Se tiver MENOS de 5:
+- nao usar Biblioteca como fonte principal;
+- coletar externamente;
+- aprovar;
+- enviar asset aprovado para Biblioteca.
+
+Se tiver 5 OU MAIS:
+- usar Biblioteca primeiro;
+- selecionar melhor variacao;
+- materializar;
+- QA local normalmente.
+
+Objetivo:
+primeiro formar repertorio;
+depois reutilizar.
+
+======================================================================
+12. PERFIS PERSISTENTES DE COLETA
+======================================================================
+
+Criar uma entidade persistente:
+
+SOURCE_PROFILE
+ou
+PERFIL_COLETA
+
+Objetivo:
+salvar configuracoes que o ChatGPT descobrir que funcionam.
+
+Campos sugeridos:
+
+id
+nome
+status
+tipo
+universos
+composition_class
+semantic_class
+hosts_prioritarios
+hosts_bloqueados
+fontes_prioritarias
+query_template
+negative_terms
+timeout_ms
+max_falhas_consecutivas
+max_urls_por_termo
+max_fontes_por_termo
+max_rodadas
+formatos_aceitos
+materializacao
+conversoes_permitidas
+transparencia
+largura_minima
+altura_minima
+taxa_sucesso_tecnico
+taxa_aprovacao_visual
+tempo_medio_ms
+prioridade
+observacoes
+updated_at
+
+Exemplo:
+
+NOME: FANDOM_WIKIA_ANIME
+TIPO: isolated
+UNIVERSOS: anime
+HOSTS_PRIORITARIOS: static.wikia.nocookie.net
+TIMEOUT_MS: 5000
+MAX_FALHAS_CONSECUTIVAS: 2
+FORMATOS: png, webp, jpg
+MATERIALIZACAO: direta
+QUERY_TEMPLATE: {personagem} {universo} full body anime
+SUCESSO_TECNICO: 87%
+APROVACAO_VISUAL: 71%
+PRIORIDADE: 1
+STATUS: ATIVO
+
+======================================================================
+13. EXEMPLOS DE PERFIS / REGRAS APRENDIDAS
+======================================================================
+
+FANDOM / WIKIA CDN
+----------------------------------------
+- excelente para personagens isolados;
+- preferir CDN direto;
+- static.wikia.nocookie.net;
+- evitar depender da pagina Fandom;
+- tentar filename canonico;
+- aceitar PNG/WebP/JPG;
+- converter quando necessario;
+- timeout curto;
+- apos falha materializada, trocar candidata.
+
+YOUTUBE THUMBNAIL
+----------------------------------------
+- mais util para contextual;
+- conferir logo/texto;
+- se dois frames do mesmo video forem ruins, abandonar video;
+- nao insistir em varios frames equivalentes.
+
+ZEROCHAN
+----------------------------------------
+- bom para anime/cartoon;
+- pode funcionar bem para contextual;
+- verificar fanart, patch, montage e white background;
+- medir taxa de aprovacao visual.
+
+PINTEREST
+----------------------------------------
+- usar como descoberta;
+- materializacao pode ser menos confiavel;
+- reduzir prioridade se taxa de aprovacao/materializacao for baixa.
+
+======================================================================
+14. APRENDIZADO DETERMINISTICO
+======================================================================
+
+O sistema pode melhorar sem LLM.
+
+Depois do QA do ChatGPT, atualizar metricas por:
+
+- fonte;
+- host;
+- tipo;
+- universo;
+- preset;
+- composition_class;
+- semantic_class.
+
+Exemplo:
+
+isolated anime:
+1. Wikia CDN
+2. Zerochan
+3. Raw GitHub
+4. Pinterest
+
+Se:
+- Wikia = 18 aprovadas em 20;
+- Pinterest = 2 aprovadas em 30;
+
+a prioridade pode ser recalculada.
+
+Importante:
+o ChatGPT deve poder corrigir manualmente a ordem.
+
+Comando:
+SALVAR COMO PADRAO
+
+Na proxima coleta noturna:
+usar o novo perfil automaticamente.
+
+======================================================================
+15. MCP — ESTADO CONSOLIDADO
+======================================================================
+
+Criar uma ferramenta principal:
+
+obter_estado_supervisor(projeto_id opcional)
+
+ou:
+
+obter_painel_supervisor()
+
+Ela deve retornar em UMA chamada:
+
+PROJETO
+- id;
+- nome;
+- status;
+- progresso;
+- automatico;
+- coleta ativa;
+- versao;
+
+ITENS
+- total;
+- aprovados;
+- congelados;
+- aguardando QA;
+- gaps;
+- falhas;
+- relink;
+
+LOTES
+- coleta;
+- materializacao;
+- status;
+- tempo;
+- heartbeat;
+
+CANDIDATAS
+- quantas;
+- materializadas;
+- aguardando QA;
+- arquivo real;
+- fonte;
+- URL original;
+- host;
+- dimensoes;
+- formato;
+
+FALHAS
+- ultimas falhas;
+- causa;
+- tentativas;
+- host;
+- fonte;
+
+CIRCUIT BREAKERS
+- hosts bloqueados;
+- motivo;
+- expiracao/opcional;
+
+CONFIGURACOES
+- perfis ativos;
+- prioridades;
+- timeout;
+- limites;
+
+DECISAO PENDENTE
+- precisa_supervisor: true/false;
+- tipo_decisao;
+- item;
+- candidatas;
+- acoes_permitidas;
+
+METRICAS
+- tempo;
+- throughput;
+- sucesso tecnico;
+- aprovacao visual;
+- custo de tentativas.
+
+======================================================================
+16. MCP — CONTROLE COMPLETO
+======================================================================
+
+O Supervisor deve ter ferramentas simples e diretas.
+
+Sugestoes:
+
+continuar_processamento
+pausar_processamento
+cancelar_processamento
+
+pausar_item
+retomar_item
+cancelar_item
+
+aprovar_candidata
+rejeitar_candidata
+relinkar_item
+
+alterar_referencia
+alterar_query
+trocar_fonte
+
+bloquear_host
+desbloquear_host
+alterar_timeout
+
+alterar_prioridade_fonte
+alterar_limites_coleta
+
+materializar_candidata
+descartar_candidata
+
+aplicar_correcao_tecnica
+
+salvar_perfil_coleta
+atualizar_perfil_coleta
+ativar_perfil_coleta
+desativar_perfil_coleta
+
+salvar_como_padrao
+
+congelar_item
+registrar_uso_asset
+
+gerar_zip
+validar_consistencia
+
+obter_resumo_noturno
+
+======================================================================
+17. FILA DE DECISOES DO SUPERVISOR
+======================================================================
+
+Criar uma fila persistente:
+
+SUPERVISOR_DECISION_QUEUE
+
+Cada decisao deve conter:
+
+id
+projeto_id
+item_id
+tipo
+prioridade
+estado
+criado_em
+evidencias
+acoes_permitidas
+resolvido_em
+decisao
+observacao
+
+Tipos:
+QA_VISUAL
+RELINK
+SOURCE_FAILURE
+MATERIALIZATION_FAILURE
+TECHNICAL_FIX
+CIRCUIT_BREAKER
+STRATEGY_REVIEW
+
+O app nao precisa chamar IA.
+
+Ele apenas cria:
+PRECISA_DECISAO_SUPERVISOR
+
+O ChatGPT consulta pelo MCP e resolve.
+
+======================================================================
+18. ENTREGA VISUAL AO CHATGPT
+======================================================================
+
+Para QA visual, o MCP deve devolver:
+
+- arquivo real;
+- ID da candidata;
+- ID do item;
+- target filename;
+- referencia semantica;
+- referencia visual;
+- universo;
+- preset;
+- slot;
+- contexto;
+- fonte;
+- URL;
+- dimensoes;
+- transparencia;
+- historico de tentativas.
+
+Nunca entregar apenas:
+- pagina;
+- preview remoto;
+- thumbnail HTML;
+- link sem materializacao.
+
+======================================================================
+19. COLETA AUTOMATICA — CONFIGURACAO LIVRE PELO SUPERVISOR
+======================================================================
+
+O ChatGPT deve poder configurar o coletor pelo MCP.
+
+Exemplos:
+
+- trocar endpoint;
+- trocar host;
+- trocar query template;
+- trocar headers permitidos;
+- alterar user-agent tecnico;
+- alterar timeout;
+- alterar tentativas;
+- alterar max URLs;
+- alterar max fontes;
+- alterar paralelismo;
+- alterar circuit breaker;
+- reordenar fontes;
+- desativar fonte ruim;
+- salvar fonte nova;
+- criar perfil;
+- persistir configuracao que funcionou.
+
+Objetivo:
+
+SE UMA CONFIGURACAO FUNCIONOU UMA VEZ,
+PODER SALVAR E REUTILIZAR.
+
+Assim o ChatGPT nao precisa resolver o mesmo problema novamente.
+
+======================================================================
+20. RESUMO NOTURNO
+======================================================================
+
+Criar:
+
+obter_resumo_noturno()
+
+Retorno sugerido:
+
+periodo
+projetos_processados
+conceitos_total
+conceitos_com_candidatas
+conceitos_sem_candidatas
+urls_testadas
+arquivos_materializados
+para_analise
+falhas_tecnicas
+hosts_bloqueados
+fontes_melhores
+fontes_piores
+tempo_total
+gaps
+decisoes_pendentes
+candidatas_prioritarias
+
+Exemplo:
+
+100 conceitos
+73 cobertos
+27 gaps
+1840 URLs testadas
+426 materializados
+318 PARA_ANALISE
+12 hosts bloqueados
+4 fontes com bom desempenho
+42 candidatas prioritarias para QA
+
+======================================================================
+21. TEMPO REAL — LIMITACAO E MODELO OPERACIONAL
+======================================================================
+
+Enquanto uma execucao do ChatGPT estiver ativa:
+o Supervisor pode conduzir o app em ciclo via MCP.
+
+O MCP sozinho nao "acorda" espontaneamente uma conversa do ChatGPT.
+
+Portanto:
+
+COLETA NOTURNA
+- roda sozinha deterministicamente.
+
+REFINAMENTO
+- comeca quando o ChatGPT entra em execucao;
+- le o estado;
+- assume controle;
+- conduz pelo MCP.
+
+Para iniciar automaticamente uma sessao futura,
+pode existir futuramente um agendador/orquestrador.
+
+Mas isso NAO exige Llama/Qwen dentro do app.
+
+======================================================================
+22. CIRCUIT BREAKER
+======================================================================
+
+Circuit breaker deve existir por:
+
+- host;
+- fonte;
+- query;
+- tipo de erro;
+- opcionalmente universo/tipo.
+
+Exemplo:
+
+2 falhas consecutivas de materializacao no mesmo host
+-> bloquear temporariamente;
+-> testar proxima rota.
+
+Erros como:
+403
+404
+429
+timeout
+mime invalido
+arquivo vazio
+anti-hotlink
+devem alimentar metricas.
+
+Nao fazer dezenas de chamadas iguais apos erro estrutural.
+
+======================================================================
+23. DIFERENCA ENTRE COLETA E APROVACAO
+======================================================================
+
+COLETA:
+pode ser ampla.
+
+APROVACAO:
+deve ser rigorosa.
+
+A coleta noturna pode guardar muitas candidatas.
+
+Mas somente o QA visual aprova.
+
+Nunca confundir:
+MATERIALIZADO
+com
+APROVADO.
+
+Estados sugeridos:
+
+DESCOBERTO
+URL_VALIDADA
+MATERIALIZADO
+PARA_ANALISE
+PARA_QA_VISUAL
+APROVADO
+REJEITADO
+RELINK_REQUIRED
+CORRECAO_TECNICA_PERMITIDA
+CONGELADO
+
+======================================================================
+24. MIGRACAO DO SUPERVISOR ATUAL
+======================================================================
+
+Remover o Cloudflare AI do caminho principal.
+
+Problemas que deixam de ser relevantes no fluxo principal:
+
+- HTTP 400 — System message must be at the beginning;
+- HTTP 403 — Model Agreement;
+- HTTP 429 — Neurons;
+- SUPERVISOR_AI_INVALID_JSON;
+- timeout de inferencia;
+- provider_mode DETERMINISTIC_FALLBACK;
+- licenca Llama;
+- custo Workers AI.
+
+O fallback deterministico continua existindo,
+mas apenas como executor e planejador tecnico basico.
+
+Nunca deve fingir:
+- QA visual;
+- aprovacao semantica;
+- inteligencia que nao ocorreu.
+
+======================================================================
+25. CLOUD AI COMO FALLBACK OPCIONAL
+======================================================================
+
+Opcionalmente, manter Cloudflare AI escondido como fallback.
+
+Somente usar se:
+- usuario explicitamente desejar autonomia total sem ChatGPT;
+- nenhuma sessao do Supervisor estiver ativa;
+- houver necessidade real.
+
+Nao deve ser requisito do funcionamento normal.
+
+======================================================================
+26. SEGURANCA E CONTROLE
+======================================================================
+
+MCP deve respeitar:
+
+- projetos concluidos manualmente nao podem ser reabertos;
+- aprovados ficam congelados;
+- exclusao permanente exige confirmacao especifica;
+- configuracao perigosa deve ter limites;
+- tokens/segredos nunca devem aparecer em logs;
+- URLs e arquivos devem ser rastreaveis;
+- toda decisao deve registrar quem/como ocorreu;
+- toda mudanca de configuracao deve gerar evento.
+
+======================================================================
+27. LOG E AUDITORIA
+======================================================================
+
+Registrar:
+
+- estado anterior;
+- acao;
+- origem da acao;
+- Supervisor MCP / automatico;
+- item;
+- candidata;
+- fonte;
+- host;
+- URL;
+- resultado;
+- tempo;
+- configuracao usada;
+- motivo;
+- proximo estado.
+
+Exemplo:
+
+SUPERVISOR_MCP
+ITEM: 005-shinso.png
+ACAO: TROCAR_REFERENCIA
+MOTIVO: candidata anterior manga monocromatica
+NOVA_REFERENCIA: Hitoshi Shinso Hero Costume Anime
+FONTE_PRIORITARIA: Wikia CDN
+STATUS: CONTINUAR_COLETA
+
+======================================================================
+28. BIBLIOTECA APOS APROVACAO
+======================================================================
+
+Depois da aprovacao:
+
+enviar para a Biblioteca Semantica com:
+
+nome_exato
+nome_semantico
+universo
+personagem_objeto_local
+tipo
+tags
+projeto_origem
+bloco
+preset
+slot
+usado_para
+referencia_roteiro
+referencia_visual
+fonte
+url_original
+status_qa
+observacao
+
+Atualizar maturidade semantica.
+
+======================================================================
+29. FLUXO COMPLETO IDEAL
+======================================================================
+
+NOITE
+----------------------------------------
+1. recebe conceitos;
+2. consulta Biblioteca madura;
+3. usa perfis persistentes;
+4. busca;
+5. testa URLs;
+6. materializa;
+7. faz QA tecnico;
+8. salva PARA_ANALISE;
+9. aplica circuit breaker;
+10. registra metricas;
+11. continua ate limites.
+
+MANHA
+----------------------------------------
+1. liga Supervisor IA;
+2. ChatGPT chama obter_resumo_noturno;
+3. ChatGPT chama obter_estado_supervisor;
+4. recebe candidatas;
+5. ve arquivos reais;
+6. aprova/rejeita;
+7. congela aprovados;
+8. relinka gaps;
+9. ajusta configuracoes;
+10. salva perfis;
+11. manda continuar;
+12. repete somente gaps;
+13. registra usos;
+14. valida consistencia;
+15. gera ZIP.
+
+======================================================================
+30. PRINCIPIO OPERACIONAL
+======================================================================
+
+Nao fazer a IA trabalhar em tudo.
+
+Cada componente deve fazer o que faz melhor.
+
+APP:
+execucao, persistencia, coleta, materializacao, metricas.
+
+MCP:
+estado, evidencias, controle.
+
+CHATGPT:
+supervisao adaptativa, visao, relink, estrategia, decisao.
+
+======================================================================
+31. CRITERIOS DE ACEITE
+======================================================================
+
+Considerar implementado quando:
+
+1. existir toggle Supervisor IA LIGADO/DESLIGADO;
+2. ligar nao chamar Cloudflare automaticamente;
+3. MCP conseguir expor estado consolidado;
+4. MCP conseguir entregar candidatas reais para QA;
+5. ChatGPT conseguir aprovar/rejeitar/relinkar;
+6. ChatGPT conseguir pausar/cancelar/continuar;
+7. ChatGPT conseguir trocar fonte/query/timeout;
+8. ChatGPT conseguir bloquear host;
+9. ChatGPT conseguir salvar configuracao eficiente;
+10. perfis persistentes forem reutilizados;
+11. coleta noturna rodar sem IA;
+12. coleta noturna acumular PARA_ANALISE;
+13. resumo noturno existir;
+14. aprovados forem congelados;
+15. gaps forem tratados isoladamente;
+16. circuit breaker funcionar;
+17. falhas nao causarem repeticao da mesma imagem;
+18. QA visual nunca for fingido deterministicamente;
+19. nenhuma geracao/composicao visual ocorrer sem autorizacao;
+20. ZIP final usar apenas assets aprovados;
+21. logs permitirem reconstruir toda a operacao.
+
+======================================================================
+32. PRIORIDADE DE IMPLEMENTACAO
+======================================================================
+
+FASE 1
+- toggle Supervisor IA;
+- remover Cloudflare do caminho principal;
+- obter_estado_supervisor;
+- controles basicos MCP;
+- entrega visual MCP;
+- fila de decisoes.
+
+FASE 2
+- modo Coleta Noturna;
+- PARA_ANALISE;
+- resumo noturno;
+- circuit breaker persistente;
+- configuracoes de coleta editaveis.
+
+FASE 3
+- SOURCE_PROFILE;
+- salvar como padrao;
+- metricas por fonte/host;
+- ranking automatico;
+- aprendizado deterministico.
+
+FASE 4
+- refinamentos de UX;
+- dashboards;
+- agendador externo opcional;
+- fallback Cloud AI opcional.
+
+======================================================================
+33. REGRA DE OURO
+======================================================================
+
+NAO CRIAR O QUE O ROTEIRO PEDE.
+ENCONTRAR ONDE AQUILO JA EXISTE.
+
+O APP EXECUTA.
+O MCP MOSTRA E CONTROLA.
+O CHATGPT SUPERVISIONA.
+
+FIM

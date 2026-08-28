@@ -1,0 +1,68 @@
+CORVO LIBRARY — V52
+PREVIEWS REAIS NA ABA PENDENTES
+Data: 2026-08-27
+
+PROBLEMA
+
+A aba Pendentes listava os assets, mas vários cards de "ingestão bruta" apareciam sem imagem.
+Os arquivos físicos existiam no R2. O problema era de metadado/entrega:
+
+- sincronizar_r2 criava assets com mime_type = application/octet-stream;
+- a UI só montava <img> quando mimeType começava com image/;
+- a rota de preview podia devolver application/octet-stream novamente.
+
+Por isso um PNG/JPG/WebP real era tratado visualmente como arquivo binário genérico.
+
+CORREÇÃO V52
+
+1. Foi criado lib/media-mime.ts.
+   Ele infere MIME por extensão para PNG, JPG/JPEG, WebP, GIF, AVIF, SVG, BMP, ICO,
+   MP4, WebM, MOV e M4V.
+
+2. Compatibilidade retroativa.
+   /api/assets normaliza mimeType em memória usando:
+   - mime_type armazenado;
+   - original_name;
+   - r2_key.
+   Não é necessário reimportar nem recriar os pendentes existentes.
+
+3. Preview real.
+   /api/files/[id]?preview=1 resolve o Content-Type correto antes de devolver o objeto R2.
+   Se o metadado antigo for application/octet-stream (ou outro MIME não-mídia), a extensão
+   conhecida do arquivo corrige a resposta.
+
+4. Frontend.
+   Os cards usam a normalização de MIME e também tentam preview quando kind = Imagem/GIF.
+   Isso cobre registros históricos incompletos.
+
+5. Supervisor MCP.
+   obter_pendentes_para_qa_catalogo anuncia o MIME normalizado nos recursos entregues ao
+   ChatGPT, permitindo inspeção visual em vez de tratar imagens antigas como binário.
+
+6. Novas sincronizações.
+   sincronizar_r2 não cria mais toda pendência como application/octet-stream/Imagem.
+   O MIME e o kind são inferidos pelo nome/chave do objeto antes da gravação.
+
+SEGURANÇA / ESCOPO
+
+- Nenhum asset foi apagado.
+- Nenhum asset foi aprovado automaticamente.
+- Nenhum status de QA foi alterado.
+- Nenhuma migração D1 nova foi necessária.
+- A correção atua somente na identificação/entrega da mídia e na catalogação futura.
+
+VALIDAÇÃO
+
+- Testes de preview legado: PASS.
+- Teste de Content-Type da rota de arquivos: PASS.
+- Teste de sincronização R2 futura: PASS.
+- Regressões de exclusão D1 V51: PASS.
+- 5/5 testes específicos executados: PASS.
+- MCP: 134 ferramentas / 134 handlers / 0 órfãos.
+- Helper MIME testado com PNG, WebP, MP4, JPEG e arquivo não-mídia.
+
+OBSERVAÇÃO DE BUILD
+
+O ambiente local continua sem todas as dependências npm instaladas. O tsc global encontra
+módulos ausentes e erros de tipagem derivados disso, portanto o build Vinext completo não é
+marcado como validado. Os testes independentes de dependências externas acima passaram.
