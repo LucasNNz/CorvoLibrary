@@ -1,4 +1,5 @@
 import { env } from "./platform/runtime";
+import { signedDownloadUrl } from "./download-signature";
 import { toArrayBuffer } from "./web-crypto";
 import sharp from "sharp";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -911,7 +912,7 @@ export async function qaFiles(batchId: string, origin: string, code: string, lim
       sha256_original: file.originalSha256,
       conversao_tipo: file.conversionType,
       rota_classificada: item.routeClass,
-      uri: origin + "/api/materializations/" + encodeURIComponent(file.id) + "?code=" + encodeURIComponent(code) + "&exp=" + expires,
+      uri: signedDownloadUrl(origin, "/api/materializations/" + encodeURIComponent(file.id), expires),
     }];
   });
   await logEvent(batchId, null, null, "qa_delivery", references.length ? "DELIVERED" : "EMPTY", { files: references.length });
@@ -1302,7 +1303,7 @@ export async function exportBatchZip(input: Record<string, unknown>, origin: str
   await env.BUCKET.put(r2Key, zip, { httpMetadata: { contentType: "application/zip" }, customMetadata: { fileName, expiresAt: String(expires), batchId, partial: String(partial), targetFiles: String(selectedItems.length) } });
   if (!partial) await db.update(materializationBatches).set({ status: "EXPORTED", updatedAt: now() }).where(eq(materializationBatches.id, batchId));
   await logEvent(batchId, null, null, partial ? "batch_partial_exported" : "batch_exported", partial ? "PARTIAL_EXPORTED" : "EXPORTED", { exportId, bytes: zip.byteLength, targetFiles: selectedItems.length });
-  const uri = origin + "/api/exports/" + encodeURIComponent(exportId) + "?code=" + encodeURIComponent(code) + "&exp=" + expires;
+  const uri = signedDownloadUrl(origin, "/api/exports/" + encodeURIComponent(exportId), expires);
   return {
     batch_id: batchId, exportacao_id: exportId, arquivo: fileName, tamanho_bytes: zip.byteLength,
     missing_from_zip: 0, extra_in_zip: 0, total_assets: new Set(assetIds).size, total_target_files: selectedItems.length, parcial: partial, url: uri,

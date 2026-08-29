@@ -1,6 +1,6 @@
 {
   "name": "corvo-library",
-  "version": "0.1.0-vercel.9-fix14-zero-touch-bootstrap",
+  "version": "0.2.0-vercel-production-migration",
   "private": true,
   "engines": {
     "node": "24.x"
@@ -12,9 +12,9 @@
     "test": "node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
-    "db:migrate:vercel": "node scripts/migrate-sqlite-to-turso.mjs",
+    "db:migrate:vercel": "node --env-file-if-exists=.env.local scripts/migrate-sqlite-to-turso.mjs",
     "db:export:d1": "node scripts/export-cloudflare-d1.mjs",
-    "db:verify:vercel": "node scripts/verify-libsql-data.mjs",
+    "db:verify:vercel": "node --env-file-if-exists=.env.local scripts/verify-libsql-data.mjs",
     "verify:vercel": "node scripts/validate-vercel-migration.mjs && npm test",
     "typecheck": "tsc --noEmit --pretty false"
   },

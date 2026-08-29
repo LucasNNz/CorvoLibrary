@@ -5,32 +5,30 @@ import { readFile } from 'node:fs/promises';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFile(new URL(path, root), 'utf8');
 
-test('FIX11 exposes owner-only clean catalog recovery route', async () => {
+test('legacy catalog recovery is owner-only and disabled in favor of full migration', async () => {
   const route = await read('app/api/migration/catalog-recovery/route.ts');
   assert.match(route, /isOwnerRequest/);
-  assert.match(route, /importRecoveredCatalog/);
+  assert.match(route, /PARTIAL_CATALOG_RECOVERY_DISABLED/);
+  assert.doesNotMatch(route, /importRecoveredCatalog/);
   assert.match(route, /export async function POST/);
 });
 
-test('FIX11 preserves asset IDs and r2 keys while rebuilding current schema', async () => {
-  const recovery = await read('lib/catalog-recovery-migration.ts');
+test('full migrator preserves asset IDs and r2 keys before applying current schema', async () => {
+  const recovery = await read('scripts/migrate-sqlite-to-turso.mjs');
   const schema = await read('lib/current-schema-bootstrap.ts');
-  assert.match(recovery, /ON CONFLICT\(id\) DO UPDATE/);
-  assert.match(recovery, /r2_key/);
-  assert.match(recovery, /CATALOG_TARGET_HAS_EXTRA_ASSETS/);
-  assert.match(recovery, /CATALOG_RECOVERY_STATS_MISMATCH/);
+  assert.match(recovery, /MIGRATION_ASSET_R2_KEY_MISMATCH/);
+  assert.match(recovery, /asset-r2-map\.json/);
+  assert.match(recovery, /MIGRATION_COUNT_MISMATCH/);
   assert.match(schema, /CURRENT_SCHEMA_TABLE_COUNT = 53/);
   assert.match(schema, /CREATE TABLE IF NOT EXISTS \\`assets\\`/);
   assert.match(schema, /INSERT OR IGNORE INTO \\`source_profiles\\`/);
   assert.match(schema, /INSERT OR IGNORE INTO \\`operational_policies\\`/);
 });
 
-test('FIX11 first-use UI prioritizes recovered JSON instead of blocking on D1', async () => {
-  const page = await read('app/page.tsx');
-  assert.match(page, /Restaurar o acervo da Library/);
-  assert.match(page, /\/api\/migration\/catalog-recovery/);
-  assert.match(page, /corvo-library-assets\.json/);
-  assert.match(page, /Migração integral via D1 \(alternativa\)/);
+test('operator migration page points only to the resumable CLI', async () => {
+  const page = await read('app/migrar-backup/page.tsx');
+  assert.match(page, /npm run db:migrate:vercel/);
+  assert.doesNotMatch(page, /type="file"|fetch\(/);
 });
 
 test('FIX11 current schema bootstrap executes from empty SQLite and keeps operational defaults', async () => {

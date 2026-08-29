@@ -1,42 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, statSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+const read = (path) => readFile(new URL(`../${path}`,import.meta.url),"utf8");
 
-const auto=readFileSync(new URL("../lib/automatic-production-bootstrap.ts",import.meta.url),"utf8");
-const migration=readFileSync(new URL("../lib/production-recovery-migration.ts",import.meta.url),"utf8");
-const status=readFileSync(new URL("../app/api/auth/status/route.ts",import.meta.url),"utf8");
-const page=readFileSync(new URL("../app/page.tsx",import.meta.url),"utf8");
-const r2=readFileSync(new URL("../lib/r2-catalog-integrity.ts",import.meta.url),"utf8");
-const recovery=JSON.parse(readFileSync(new URL("../data/production-recovery-v1.json",import.meta.url),"utf8"));
-
-test("FIX14 bundles the production recovery snapshot",()=>{
-  assert.equal(recovery.tables.assets.length,929);
-  assert.equal(recovery.tables.asset_usage.length,1176);
-  assert.equal(recovery.tables.settings.length,39);
-  assert.ok(statSync(new URL("../data/production-recovery-v1.json",import.meta.url)).size>1_000_000);
+test("definitive package bundles the complete validated Sites backup", async () => {
+  const manifest=JSON.parse(await read("migration/full-backup/database-manifest.json"));
+  const assetMap=JSON.parse(await read("migration/full-backup/asset-r2-map.json"));
+  const inventory=JSON.parse(await read("migration/full-backup/r2-inventory.json"));
+  assert.equal(manifest.total_tables,47);
+  assert.equal(manifest.total_records,39294);
+  assert.equal(assetMap.length,929);
+  assert.equal(inventory.object_count,2321);
+  assert.equal(inventory.objects.length,2321);
 });
 
-test("FIX14 bootstraps automatically and preserves existing rows",()=>{
-  assert.match(auto,/ZERO_TOUCH_PRESERVE_EXISTING/);
-  assert.match(auto,/EXPECTED_ASSETS = 929/);
-  assert.match(auto,/EXPECTED_USAGE = 1176/);
-  assert.match(auto,/conflictMode:"preserve-existing"/);
-  assert.match(migration,/preserve-existing/);
-  assert.match(status,/ensureAutomaticProductionBootstrap/);
-  assert.match(status,/productionBootstrap/);
-});
-
-test("FIX14 no longer gates the app behind legacy D1 migration",()=>{
-  assert.match(page,/const legacyMigrationRequired = false/);
-  assert.match(page,/const libraryDataReady = authStatus\.authenticated/);
-  assert.doesNotMatch(page,/if \(legacyMigrationRequired\) return <LegacyDataBootstrapScreen/);
-  assert.match(page,/Turso \+ R2 persistentes/);
-  assert.match(page,/Base de produção — automática/);
-});
-
-
-test("FIX14 reconciles R2 automatically without blocking app bootstrap",()=>{
-  assert.match(r2,/expectedUniqueKeys/);
-  assert.match(r2,/env\.BUCKET\.list/);
-  assert.match(status,/waitUntil\(reconcileR2CatalogIntegrity/);
+test("status is read-only and partial production recovery is disabled", async () => {
+  const status=await read("app/api/auth/status/route.ts");
+  const recovery=await read("app/api/migration/production-recovery/route.ts");
+  assert.doesNotMatch(status,/ensureAutomaticProductionBootstrap|reconcileR2CatalogIntegrity|waitUntil/);
+  assert.match(recovery,/PARTIAL_RECOVERY_DISABLED/);
+  assert.doesNotMatch(recovery,/importProductionRecovery/);
 });

@@ -4,6 +4,7 @@ import { getDb } from "../../../../../db";
 import { automaticProjectFiles } from "../../../../../db/schema";
 import { attachAutomaticProjectFile } from "../../../../../lib/automatic-projects";
 import { isOwnerRequest, ownerOnly, validMcpCode } from "../../../../../lib/mcp-access";
+import { validDownloadSignature } from "../../../../../lib/download-signature";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   if (!await isOwnerRequest(request)) return ownerOnly();
@@ -18,7 +19,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const owner = await isOwnerRequest(request);
-  if (!owner && !(await validMcpCode(request))) return ownerOnly();
+  if (!owner && !validDownloadSignature(request) && !(await validMcpCode(request))) return ownerOnly();
   const url = new URL(request.url);
   if (!owner) {
     const expires = Number(url.searchParams.get("exp"));

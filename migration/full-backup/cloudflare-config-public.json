@@ -1,0 +1,69 @@
+{
+  "exported_at": "2026-08-28T23:21:31.254Z",
+  "account_id": "34da8bbc6302e3c68edf3a36f1569668",
+  "r2_bucket_name": "corvoquiz-prod",
+  "r2_endpoint": "https://34da8bbc6302e3c68edf3a36f1569668.r2.cloudflarestorage.com",
+  "d1_database_id": null,
+  "d1_database_name": null,
+  "d1_resource_note": "The Sites-managed physical D1 database ID/name are not exposed by the read-only Sites connector.",
+  "bindings": {
+    "d1": "DB",
+    "r2": "BUCKET"
+  },
+  "r2_prefixes": [
+    "assets/",
+    "incoming/",
+    "materialized/",
+    "projects/"
+  ],
+  "expected_variables": [
+    {
+      "name": "DB",
+      "kind": "Turso/libSQL database binding replacement"
+    },
+    {
+      "name": "BUCKET",
+      "kind": "Cloudflare R2 binding/replacement client"
+    },
+    {
+      "name": "CORVO_OWNER_EMAIL",
+      "kind": "owner access configuration"
+    },
+    {
+      "name": "CORVO_CONFIG_ENCRYPTION_KEY",
+      "kind": "AES-GCM configuration encryption key"
+    },
+    {
+      "name": "CLOUDFLARE_ACCOUNT_ID",
+      "kind": "Cloudflare account identifier"
+    },
+    {
+      "name": "CLOUDFLARE_R2_ACCESS_KEY_ID",
+      "kind": "R2 S3 access key identifier"
+    },
+    {
+      "name": "CLOUDFLARE_R2_SECRET_ACCESS_KEY",
+      "kind": "R2 S3 secret"
+    },
+    {
+      "name": "CLOUDFLARE_AI_API_TOKEN",
+      "kind": "optional AI provider token"
+    },
+    {
+      "name": "CLOUDFLARE_API_TOKEN",
+      "kind": "optional Cloudflare API token"
+    },
+    {
+      "name": "OPENAI_API_KEY",
+      "kind": "optional OpenAI provider key"
+    },
+    {
+      "name": "SUPERVISOR_IA_ENDPOINT",
+      "kind": "optional external supervisor endpoint"
+    },
+    {
+      "name": "SUPERVISOR_IA_TOKEN",
+      "kind": "optional external supervisor token"
+    }
+  ]
+}

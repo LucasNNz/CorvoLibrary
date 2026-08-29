@@ -1,7 +1,4 @@
 import { getLibrarySession } from "../../../../lib/auth";
-import { waitUntil } from "@vercel/functions";
-import { reconcileR2CatalogIntegrity } from "../../../../lib/r2-catalog-integrity";
-import { ensureAutomaticProductionBootstrap } from "../../../../lib/automatic-production-bootstrap";
 import { getDatabaseBootstrapState } from "../../../../lib/platform/database-bootstrap";
 
 export const maxDuration = 300;
@@ -25,16 +22,12 @@ export async function GET(request: Request) {
   }
 
   try {
-    const productionBootstrap = await ensureAutomaticProductionBootstrap();
-    // R2 verification is automatic and non-blocking. If R2 is not configured yet,
-    // the background check simply records nothing and the app remains usable.
-    waitUntil(reconcileR2CatalogIntegrity().catch(() => undefined));
     const session = await getLibrarySession(request);
     return Response.json({
       ...session,
       bootstrapRequired: false,
       bootstrap: { provider: bootstrap.provider, missing: [], marketplaceUrl: bootstrap.marketplaceUrl },
-      productionBootstrap,
+      productionBootstrap: { status: "MIGRATED_DATABASE_REQUIRED", mode: "READ_ONLY_STATUS" },
     }, { headers:{"cache-control":"no-store"} });
   } catch (error) {
     const raw = error instanceof Error ? error.message : String(error);

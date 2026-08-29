@@ -31,10 +31,11 @@ for (const dep of ['@libsql/client','@aws-sdk/client-s3','@vercel/functions','sh
 
 const sourceFiles = (await files(root)).filter((path) => /\.(ts|tsx|js|mjs|json)$/.test(path));
 for (const path of sourceFiles) {
-  if (path.endsWith('scripts/validate-vercel-migration.mjs')) continue;
+  const relativePath = relative(root,path).replaceAll('\\','/');
+  if (relativePath === 'scripts/validate-vercel-migration.mjs') continue;
   const text = await readFile(path, 'utf8');
   for (const marker of ['cloudflare:workers','vinext/server','@cf-wasm/','@jsquash/']) {
-    if (text.includes(marker)) errors.push(`${relative(root,path)} contains ${marker}`);
+    if (text.includes(marker)) errors.push(`${relativePath} contains ${marker}`);
   }
 }
 
@@ -61,19 +62,14 @@ for (const marker of ['cloudflare_connection_manifest_v1','secret_cloudflare_con
 }
 if (!secureSettings.includes('saveCloudflareManifest')) errors.push('persistent Cloudflare config must maintain non-secret recovery manifest');
 const migrationScript = await readFile(join(root, 'scripts/migrate-sqlite-to-turso.mjs'), 'utf8');
-if (!migrationScript.includes('cloudflare_connection_manifest_v1')) errors.push('D1 migration must create inherited config reference manifest');
-notes.push('legacy config: imported settings preserved + non-secret recovery manifest');
-
-const d1Migration = await readFile(join(root, 'lib/d1-to-turso-migration.ts'), 'utf8');
-for (const marker of ['createTargetBackup','rollbackLastD1Migration','restoreVercelBootstrapSettings']) if (!d1Migration.includes(marker)) errors.push(`D1 migration safety missing ${marker}`);
-notes.push('D1 migration: R2 snapshot + automatic/manual rollback');
+for (const marker of ['corvo_migration_state','MIGRATION_COUNT_MISMATCH','full-backup']) if (!migrationScript.includes(marker)) errors.push(`full migration safety missing ${marker}`);
+notes.push('legacy config: full settings snapshot preserved; Vercel environment takes precedence');
+notes.push('D1 migration: resumable, count-validated and disabled over HTTP');
 
 const vercel = JSON.parse(await readFile(join(root, 'vercel.json'), 'utf8'));
-if (Array.isArray(vercel.crons) && vercel.crons.length > 0) {
-  errors.push('Vercel Cron must stay disabled; periodic scheduling is ChatGPT -> MCP');
-}
+if (!Array.isArray(vercel.crons) || !vercel.crons.some((cron) => cron.path === '/api/internal/data-plane')) errors.push('Vercel data-plane cron missing');
 
-const routeFiles = sourceFiles.filter((path) => path.endsWith('/route.ts'));
+const routeFiles = sourceFiles.filter((path) => path.replaceAll('\\','/').endsWith('/route.ts'));
 notes.push(`route handlers: ${routeFiles.length}`);
 notes.push(`runtime adapter: lib/platform/runtime.ts`);
 notes.push(`data plane: lib/data-plane.ts`);

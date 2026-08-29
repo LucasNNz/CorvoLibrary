@@ -25,8 +25,10 @@ test('persisted secrets use stable master key with Turso and password recovery w
   for (const marker of ['library_master_key_v1','passwordWrapSalt','TURSO_AUTH_TOKEN','rewrapLibraryMasterKeyForPassword']) assert.match(master, new RegExp(marker));
 });
 
-test('D1 replacement snapshots Turso and preserves Vercel auth/master-key bootstrap', async () => {
-  const migration = await read('lib/d1-to-turso-migration.ts');
-  for (const marker of ['createTargetBackup','rollbackLastD1Migration','restoreVercelBootstrapSettings','library_auth_v1','library_master_key_v1']) assert.match(migration, new RegExp(marker));
-  assert.match(migration, /D1_MIGRATION_FAILED_AUTO_ROLLBACK_OK/);
+test('D1 replacement is resumable, validated and unavailable through HTTP', async () => {
+  const migration = await read('scripts/migrate-sqlite-to-turso.mjs');
+  const route = await read('app/api/migration/d1-to-turso/route.ts');
+  for (const marker of ['corvo_migration_state','MIGRATION_COUNT_MISMATCH','VALIDATED']) assert.match(migration, new RegExp(marker));
+  assert.match(route, /RUNTIME_D1_MIGRATION_DISABLED/);
+  assert.doesNotMatch(route, /DROP TABLE/);
 });

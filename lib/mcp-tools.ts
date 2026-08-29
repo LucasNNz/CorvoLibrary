@@ -8,6 +8,7 @@ import { resolveCorvoD1Database } from "./cloudflare-admin";
 import { approvePendingAssets, deleteAssetsPermanently, getCatalogStats } from "./asset-catalog-admin";
 import { processZipImport, SUPPORTED_MEDIA_MIME } from "./import-processor";
 import { createSignedR2GetUrl } from "./r2-download";
+import { signedDownloadUrl } from "./download-signature";
 import { confirmMediaUpload, decideThumbnailBatch, fastPushGeneratedMedia, getProjectThumbnailLinks, prepareMediaUpload } from "./media-delivery";
 import { confirmDownloadPackage, getDownloadPackageLink, listReadyDownloadPackages, queueFinalPackage } from "./delivery-packages";
 import { decideFastPushBatch, decideFastPushCandidates, deleteFastPushCandidatesBatch, ingestFastPushBatch, ingestFastPushFileBytes, linkFastPushCandidatesToProject, listFastPushCandidates, listFastPushProjectTargets } from "./fast-push";
@@ -749,7 +750,7 @@ export async function executeTool(name: string, rawInput: unknown, origin: strin
         if (requested.length) conditions.push(inArray(assets.id, requested));
         const rows = await db.select().from(assets).where(and(...conditions)).orderBy(desc(assets.updatedAt)).limit(max);
         const expires = Date.now() + 30 * 60_000;
-        const arquivos = rows.map((asset) => { const mimeType = resolveMediaMime(asset.mimeType, asset.originalName, asset.r2Key); return { asset_id:asset.id, nome:asset.name, universo:asset.universe, tipo:asset.kind, status:asset.status, qa_status:asset.qaStatus, arquivo:asset.originalName, mime_type:mimeType, tamanho_bytes:asset.sizeBytes, projeto_origem:asset.projectOrigin, referencia_roteiro:asset.scriptReference, referencia_visual:asset.visualReference, fonte_url:asset.sourceUrl, uri:origin + "/api/files/" + encodeURIComponent(asset.id) + "?preview=1&code=" + encodeURIComponent(code) + "&exp=" + expires }; });
+        const arquivos = rows.map((asset) => { const mimeType = resolveMediaMime(asset.mimeType, asset.originalName, asset.r2Key); return { asset_id:asset.id, nome:asset.name, universo:asset.universe, tipo:asset.kind, status:asset.status, qa_status:asset.qaStatus, arquivo:asset.originalName, mime_type:mimeType, tamanho_bytes:asset.sizeBytes, projeto_origem:asset.projectOrigin, referencia_roteiro:asset.scriptReference, referencia_visual:asset.visualReference, fonte_url:asset.sourceUrl, uri:signedDownloadUrl(origin, "/api/files/" + encodeURIComponent(asset.id) + "?preview=1", expires) }; });
         result = { total:arquivos.length, arquivos, __resources:arquivos.map((asset) => ({ name:asset.arquivo, uri:asset.uri, mimeType:asset.mime_type, description:`Pendente ${asset.asset_id} · ${asset.nome} · ${asset.universo}` })) };
         break;
       }
@@ -1122,7 +1123,7 @@ export async function executeTool(name: string, rawInput: unknown, origin: strin
       case "obter_resumo_noturno": result = await getNightlySummary(Number(input.horas) || 12); break;
       case "congelar_item": { const projectId = string(input.projeto_id); result = await withProjectLease(projectId, input, "CONGELAR_ITEM", () => qaAutomaticProject({ projeto_id: projectId, decisoes: [{ item_id: string(input.item_id), status: "APROVADO", observacao: string(input.observacao) || "Congelado pelo Supervisor MCP" }] })); break; }
       case "registrar_uso_asset": result = await registerUsage(input); break;
-      case "gerar_zip": { const projectId = string(input.projeto_id); result = await withProjectLease(projectId, input, "GERAR_ZIP", async () => { const zip = await regenerateProjectZip(projectId); const expires = Date.now() + 60 * 60_000; return { ...zip, url: `${origin}/api/projects/${encodeURIComponent(projectId)}/zip?code=${encodeURIComponent(code)}&exp=${expires}`, validade_minutos: 60 }; }); break; }
+      case "gerar_zip": { const projectId = string(input.projeto_id); result = await withProjectLease(projectId, input, "GERAR_ZIP", async () => { const zip = await regenerateProjectZip(projectId); const expires = Date.now() + 60 * 60_000; return { ...zip, url: signedDownloadUrl(origin, `/api/projects/${encodeURIComponent(projectId)}/zip`, expires), validade_minutos: 60 }; }); break; }
       case "validar_consistencia": { const projectId = string(input.projeto_id); await touchProjectRead(projectId, input, "VALIDAR_CONSISTENCIA"); result = await getProjectConsistencyGate(projectId); break; }
       case "listar_projetos_automaticos": result = await listAutomaticProjectsFast(limitOf(input.limite, 100), string(input.cursor) || undefined); break;
       case "criar_projeto_automatico": result = await createAutomaticProject(input); break;
@@ -1137,14 +1138,14 @@ export async function executeTool(name: string, rawInput: unknown, origin: strin
         const file = await getAutomaticProjectFile(input, false);
         const minutes = Math.max(1, Math.min(60, Number(input.validade_minutos) || 30));
         const expires = Date.now() + minutes * 60_000;
-        result = { ...file, url: `${origin}/api/projects/${encodeURIComponent(string(input.projeto_id))}/files?file_id=${encodeURIComponent(String((file as Record<string, unknown>).arquivo_id || ""))}&code=${encodeURIComponent(code)}&exp=${expires}`, validade_minutos: minutes };
+        result = { ...file, url: signedDownloadUrl(origin, `/api/projects/${encodeURIComponent(string(input.projeto_id))}/files?file_id=${encodeURIComponent(String((file as Record<string, unknown>).arquivo_id || ""))}`, expires), validade_minutos: minutes };
         break;
       }
       case "processar_projeto_automatico": { const projectId = string(input.projeto_id); result = await withProjectLease(projectId, input, "PROCESSAR_PROJETO_AUTOMATICO", () => processAutomaticProject(input)); break; }
       case "reconciliar_projeto_automatico": { const projectId = string(input.projeto_id); result = await withProjectLease(projectId, input, "RECONCILIAR_PROJETO_AUTOMATICO", async () => { const reconciled = await reconcileAutomaticProject(projectId); await recordSupervisorProjectReconciled(projectId, string(input.execution_id), { source: "MCP", result: reconciled }); return reconciled; }); break; }
       case "validar_consistencia_projeto": { const projectId = string(input.projeto_id); await touchProjectRead(projectId, input, "VALIDAR_CONSISTENCIA_PROJETO"); result = await getProjectConsistencyGate(projectId); break; }
       case "registrar_qa_projeto": { const projectId = string(input.projeto_id); result = await withProjectLease(projectId, input, "REGISTRAR_QA_PROJETO", () => qaAutomaticProject(input)); break; }
-      case "regenerar_zip_projeto": { const projectId = string(input.projeto_id); result = await withProjectLease(projectId, input, "REGENERAR_ZIP_PROJETO", async () => { const zip = await regenerateProjectZip(projectId); const expires = Date.now() + 60 * 60_000; return { ...zip, url: `${origin}/api/projects/${encodeURIComponent(projectId)}/zip?code=${encodeURIComponent(code)}&exp=${expires}`, validade_minutos: 60 }; }); break; }
+      case "regenerar_zip_projeto": { const projectId = string(input.projeto_id); result = await withProjectLease(projectId, input, "REGENERAR_ZIP_PROJETO", async () => { const zip = await regenerateProjectZip(projectId); const expires = Date.now() + 60 * 60_000; return { ...zip, url: signedDownloadUrl(origin, `/api/projects/${encodeURIComponent(projectId)}/zip`, expires), validade_minutos: 60 }; }); break; }
       case "reabrir_projeto_concluido": result = await reopenAutomaticProject(input); break;
       case "verificar_disponibilidade_projeto": result = await getProjectAutomationAvailability(input); break;
       case "obter_log_projeto": { const projectId = string(input.projeto_id); await touchProjectRead(projectId, input, "OBTER_LOG_PROJETO"); result = await getAutomaticProjectLog(projectId); break; }

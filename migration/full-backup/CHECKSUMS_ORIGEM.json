@@ -1,0 +1,432 @@
+[
+  {
+    "file": "CHECKSUMS.json",
+    "sha256": "a8d65fb07e29c2cb8feeb20068682c5819f0511cf0643f8a598f78013f33dfe8",
+    "size_bytes": 14186
+  },
+  {
+    "file": "README_MIGRACAO.txt",
+    "sha256": "361b3651fb8d48fae6ffe2689c7a3c13657dae1388528a3da7822603759fa4da",
+    "size_bytes": 827
+  },
+  {
+    "file": "VALIDACAO_MIGRACAO.txt",
+    "sha256": "7694a017966f69c9de75f26c4eafb794830c87c8684d83fc4f9d05694b8d678d",
+    "size_bytes": 907
+  },
+  {
+    "file": "asset-r2-map.json",
+    "sha256": "a53db48fd4382931bcace0922de95789bdf7cc838ec07c31ec971bddfc75aff5",
+    "size_bytes": 341348
+  },
+  {
+    "file": "cloudflare-config-public.json",
+    "sha256": "b125ae36cf3b4d70c6ec7422e448a980499d909cf0af846c95c3a3c14792b159",
+    "size_bytes": 1748
+  },
+  {
+    "file": "database-manifest.json",
+    "sha256": "aa4bbc95035684e7ec0ed245b68753301af696921b8902e3494f05b7374b062a",
+    "size_bytes": 198135
+  },
+  {
+    "file": "database.sql",
+    "sha256": "349f7a7bf6d1e3528b11904b5efcc1ffd82f286473fd7da39914a036fbaad402",
+    "size_bytes": 24948553
+  },
+  {
+    "file": "migrations/applied/0000_wandering_tombstone.sql",
+    "sha256": "b1e522f3ab90ffa6221abdc9c8072ca96077048aae99ee8d66a3bb877812bb4e",
+    "size_bytes": 1197
+  },
+  {
+    "file": "migrations/applied/0001_moaning_quicksilver.sql",
+    "sha256": "ad11fc32ec45b9151fca9d4fa6db9da4ae9d2a8fb21d6455a2498ab787ddd81f",
+    "size_bytes": 2086
+  },
+  {
+    "file": "migrations/applied/0002_white_magma.sql",
+    "sha256": "8ab87495e68a496c41331affd6b95a914950f4421b87e9810af42568482fc89e",
+    "size_bytes": 3514
+  },
+  {
+    "file": "migrations/applied/0003_materializer_v2_default.sql",
+    "sha256": "15beee6dc2093dab03fa57e60252ed195c987ca2d8420adf90ebc8972492c6d8",
+    "size_bytes": 212
+  },
+  {
+    "file": "migrations/applied/0004_solid_caretaker.sql",
+    "sha256": "8ac11afe5b31fa5a3791c35a80c160034a3d1dbfbf1aa525d3ed0eeb17a127cd",
+    "size_bytes": 358
+  },
+  {
+    "file": "migrations/applied/0005_flimsy_azazel.sql",
+    "sha256": "0c34895a15653095406f65e3081dea78412d18aed43f258019de085ee52f5705",
+    "size_bytes": 3653
+  },
+  {
+    "file": "migrations/applied/0006_zippy_venom.sql",
+    "sha256": "3fd723d45ac9c7d51b1f47eb2a715723a834f29bbf86a15d6745d802b74885b0",
+    "size_bytes": 744
+  },
+  {
+    "file": "migrations/applied/0007_jazzy_blindfold.sql",
+    "sha256": "d2d473b668d716a7e44e2b752b2f7d4a0f991a99e6d6bb35a7fbdf30ec33fed3",
+    "size_bytes": 2667
+  },
+  {
+    "file": "migrations/applied/0008_supervisor_v1_1.sql",
+    "sha256": "a06bfa2e4486a302c239b50f6cce477a69fa6101eb9936b0d8308570aeea4491",
+    "size_bytes": 2715
+  },
+  {
+    "file": "migrations/applied/0009_supervisor_mcp_night_collection.sql",
+    "sha256": "afa77c5224b6e776584b67095d5256a09fc4faa97ade7595f4c59e1c88dd434f",
+    "size_bytes": 6111
+  },
+  {
+    "file": "migrations/applied/0010_supervisor_materialization_bridge.sql",
+    "sha256": "375a6daa7a2b45a4dbdb4ddcb9065ea7f66e709356ee70e7e56fe7a07ed7b341",
+    "size_bytes": 1217
+  },
+  {
+    "file": "migrations/applied/0011_supervisor_lease_resume.sql",
+    "sha256": "323a1e1f345811120d563e75de18bf94caed4b9406650471db12906a8970c3d7",
+    "size_bytes": 2740
+  },
+  {
+    "file": "migrations/applied/0012_fifo_multiworker_multidomain_operations.sql",
+    "sha256": "34309be8978c619df4955b381c2dbdb3bdba23a3e22fa495281309b4e2c2e638",
+    "size_bytes": 9578
+  },
+  {
+    "file": "migrations/applied/0013_fast_control_parallel_data.sql",
+    "sha256": "2980def9ccb0b0f2d386b8fdd5a757ca94b4e121613c0babca456c021e4347d1",
+    "size_bytes": 7435
+  },
+  {
+    "file": "migrations/applied/0014_legacy_backfill_safe_lease.sql",
+    "sha256": "c61e44813a94e625edbd64d94c5e1437cda5495abb49a5ebdda6c8495b9c0f39",
+    "size_bytes": 7323
+  },
+  {
+    "file": "migrations/applied/0015_reject_continue_chatter_reduction.sql",
+    "sha256": "a46dbe6ec4f4f98107ab0f48f5118de676bafc6682e2da7dfff1b776547a4739",
+    "size_bytes": 1540
+  },
+  {
+    "file": "migrations/applied/0016_supervisor_plans_fanout_source_routing.sql",
+    "sha256": "775ea1bf0314be94bedd0dd506edcb3347b55af1af9f0e8ead101e81fcd357ee",
+    "size_bytes": 8610
+  },
+  {
+    "file": "migrations/applied/0017_operational_policy_workspace.sql",
+    "sha256": "4e64165df969db67495f4390d3bcfd2a874884099f781b4fe53d66719b659246",
+    "size_bytes": 8006
+  },
+  {
+    "file": "migrations/unapplied/0018_internal_worker_dispatcher.sql",
+    "sha256": "d9408c3f65eae3729f0ccbc961b3739515e86fee0f92af6d76a7e8c8ee7c32a1",
+    "size_bytes": 1455
+  },
+  {
+    "file": "migrations/unapplied/0019_fast_push_batch_inbox.sql",
+    "sha256": "862aba1fdd43b4c5fffa0adeee22e65173d4bceaeec55eee76e14822383336bd",
+    "size_bytes": 1618
+  },
+  {
+    "file": "migrations/unapplied/0020_fast_push_project_bridge.sql",
+    "sha256": "c8f0c761c3c520f76556989c87b46297b06607e8045cdc7e659623bb04faa396",
+    "size_bytes": 869
+  },
+  {
+    "file": "migrations/unapplied/0021_project_production_package.sql",
+    "sha256": "ebbde64175bc8f745c9b227f90585b9dda264b9f29415936cee2addf97b02b10",
+    "size_bytes": 1943
+  },
+  {
+    "file": "migrations/unapplied/0022_fast_supervisor_decision_ack.sql",
+    "sha256": "3845e2a6a6e47b0948694a4f72f9457642c2a841cefda79e8b0048de2d211f8f",
+    "size_bytes": 1057
+  },
+  {
+    "file": "r2-inventory.json",
+    "sha256": "751633590515f55ccdaf21ded8e7083b22c9e5b6030a9c766c5d01bceef92fa0",
+    "size_bytes": 1593783
+  },
+  {
+    "file": "schema.sql",
+    "sha256": "0c13b1309112bdac0835eff0b9966095c945af90da344e369d964cb2d9089d8d",
+    "size_bytes": 38035
+  },
+  {
+    "file": "secrets-required.json",
+    "sha256": "0e0043810577f7daf74dd7116e2b66e73aab16cf9664ac2b68216969c9668f56",
+    "size_bytes": 1637
+  },
+  {
+    "file": "source-schema/.openai__hosting.json",
+    "sha256": "977612bffd87b34c45e3e93cec2737a1a12318c567f8fdfc6ef3afe3ee4b4ffb",
+    "size_bytes": 95
+  },
+  {
+    "file": "source-schema/LIVE_SOURCE_COMMIT.txt",
+    "sha256": "39b80836844544f221f9d2e741a225a6ef146284b58ed2bc3d9a1e04f0d41dad",
+    "size_bytes": 41
+  },
+  {
+    "file": "source-schema/db__index.ts",
+    "sha256": "dc7610b00b918e0ffff1360a63626f16655ced3064b2eaf96095a4101fb14bcd",
+    "size_bytes": 423
+  },
+  {
+    "file": "source-schema/db__schema.ts",
+    "sha256": "a7c4fc3d9164960d6fe51ea54cd4de1549692a5806d07a61f5b752c24f71c359",
+    "size_bytes": 47730
+  },
+  {
+    "file": "source-schema/drizzle.config.ts",
+    "sha256": "af081f7384aaeb0082cf422e29f139d137ca2f6a57c69b2c37b9fb1f8479867b",
+    "size_bytes": 148
+  },
+  {
+    "file": "tables-list.json",
+    "sha256": "6a461242938030e1e37d9f94f026c187120522e9d6b6ef39c94cd17a2821e4b3",
+    "size_bytes": 1121
+  },
+  {
+    "file": "tables/asset_consultations.json",
+    "sha256": "a0fbfcf85d49c1f6981561be5b66b9e34abdddf7e7d2e6463c83d90c44e5c965",
+    "size_bytes": 191
+  },
+  {
+    "file": "tables/asset_usage.json",
+    "sha256": "c5d87629e144cfa3ac6bf3d77881190bd56f6315ad78f59802fa441c20513e59",
+    "size_bytes": 592636
+  },
+  {
+    "file": "tables/assets.json",
+    "sha256": "b9cd038c2f45bb98a1ad20e49a4faa622382b05caf44f5c4049086cea94e7dbf",
+    "size_bytes": 1230454
+  },
+  {
+    "file": "tables/automatic_project_events.json",
+    "sha256": "bd2105b668c9f0f5d6c3400009ab50c52bfc7556fbe7f0a93d13d3f294d26be5",
+    "size_bytes": 1821235
+  },
+  {
+    "file": "tables/automatic_project_files.json",
+    "sha256": "ef48609ee8069ace4afe02d73f79d363721f036d3ca9a6eb91f71e0c26dd28db",
+    "size_bytes": 33998
+  },
+  {
+    "file": "tables/automatic_project_items.json",
+    "sha256": "5a369bf80d09bc31c713b2263a5adfc1fd10c48ccbad61f3362465cb4704cc96",
+    "size_bytes": 1111967
+  },
+  {
+    "file": "tables/automatic_projects.json",
+    "sha256": "597bf4b541a4901e62af915deae2ab62d32122fb3a41c1d98facf7bd464bf527",
+    "size_bytes": 61823
+  },
+  {
+    "file": "tables/batch_assets.json",
+    "sha256": "50b05d16b0e7360003b1be6d054519d31f6d461b45e46e77a9bfa502d6278286",
+    "size_bytes": 13725
+  },
+  {
+    "file": "tables/batches.json",
+    "sha256": "aea1e7f0787680cd7286a52ed8c9b27a29a069187bcad20e5454b3e9f7555edc",
+    "size_bytes": 13100
+  },
+  {
+    "file": "tables/collection_batches.json",
+    "sha256": "3569f17eeab4d7251c14da1b83cef3245d7e3ed5609338bcfeb51a9dabfa027b",
+    "size_bytes": 8346
+  },
+  {
+    "file": "tables/collection_candidates.json",
+    "sha256": "4912d557d82117893c449cc17ac29411d872d57457430d3537501afdb90ed044",
+    "size_bytes": 6126365
+  },
+  {
+    "file": "tables/collection_source_runs.json",
+    "sha256": "ee52094740d5d1508e5b96eac9eba647ed4839ca2469341e1969ea1b77fed325",
+    "size_bytes": 3727644
+  },
+  {
+    "file": "tables/collection_sources.json",
+    "sha256": "7f85d32eb072863280c4c38a24cf767f343ca9653b7f562a2c0463cec9f3d234",
+    "size_bytes": 25873
+  },
+  {
+    "file": "tables/collection_terms.json",
+    "sha256": "c4ebc2177b72c0aa0fa0489d75b5f239061c1337a92d009aabc62531be6d381d",
+    "size_bytes": 2094071
+  },
+  {
+    "file": "tables/export_jobs.json",
+    "sha256": "793f99900ae4cd1f9274d30ad3a5a65ff848c38da4934c005832d341b7692604",
+    "size_bytes": 271
+  },
+  {
+    "file": "tables/imports.json",
+    "sha256": "38ebdb45b0e1b9bf1a9beef1d599681daa49a5a99d9513406fd573357361f1fe",
+    "size_bytes": 61804
+  },
+  {
+    "file": "tables/materialization_batches.json",
+    "sha256": "0a2f12e30db445b728410aaa0f7aa7d8119bbee441daa1e3c79d16f60e04a388",
+    "size_bytes": 86952
+  },
+  {
+    "file": "tables/materialization_candidates.json",
+    "sha256": "f51606311c5aa4f8fd187cc0288a84e3b704479d61abacd52afbcc5099cd5ab5",
+    "size_bytes": 1640781
+  },
+  {
+    "file": "tables/materialization_files.json",
+    "sha256": "7d2bfd6951f80f0a248448972f61f83953b585d3531301b247eb1ffa07b4514b",
+    "size_bytes": 1120710
+  },
+  {
+    "file": "tables/materialization_host_health.json",
+    "sha256": "233f5694f3411f9dded0f489c9fd44721a04065d6c3216d84bccf28d66ab30fd",
+    "size_bytes": 74415
+  },
+  {
+    "file": "tables/materialization_host_probes.json",
+    "sha256": "bb0465f1406d6a023338a8e0bc9c238a65651f771d71cce12e9330ff440e7ff5",
+    "size_bytes": 230
+  },
+  {
+    "file": "tables/materialization_items.json",
+    "sha256": "d65342c0c0367c6c3f578e0b903ffef247dfdddb575827a51ccad62969881db4",
+    "size_bytes": 1122637
+  },
+  {
+    "file": "tables/materialization_logs.json",
+    "sha256": "e09e6676df655f17f69aeb372f497f4d689834fe047421d44547b267b7b24185",
+    "size_bytes": 3662092
+  },
+  {
+    "file": "tables/mcp_audit.json",
+    "sha256": "d6b40ad6c29924dff708dba19d26f0cb11ad11e7fdf7296cd257b921c707fc68",
+    "size_bytes": 2036775
+  },
+  {
+    "file": "tables/operation_results.json",
+    "sha256": "ffeb2aa1d2b5f654ef047d8bf1a5de29dfdb5c55cca3ba201be5af00ccad20bc",
+    "size_bytes": 30388
+  },
+  {
+    "file": "tables/operational_gaps.json",
+    "sha256": "458bbf508802b3bd77f7380f3baf2b31cf62cce3294bb18321c9b9f725094ec5",
+    "size_bytes": 486
+  },
+  {
+    "file": "tables/operational_policies.json",
+    "sha256": "63c65cbbfb2af4c51134da8d65fc15bdb815e96e2dfe94fce8b8ce28439426bf",
+    "size_bytes": 8397
+  },
+  {
+    "file": "tables/operational_policy_events.json",
+    "sha256": "9f5528fc330ea6e2134c1d64f3925be53b1ac211983af2a5402a6fd2ae3d1a65",
+    "size_bytes": 85863
+  },
+  {
+    "file": "tables/plan_branches.json",
+    "sha256": "2eb65c146f38006da78aae03ae9ec4e20e5f535cb3a8af2ce61e3b39facd8b76",
+    "size_bytes": 11514
+  },
+  {
+    "file": "tables/project_runs.json",
+    "sha256": "f8017ef7185fa5e23356de371c0dae46b1258deb7dc9acf3b3e58d72f05f5fe0",
+    "size_bytes": 740
+  },
+  {
+    "file": "tables/queue_snapshots.json",
+    "sha256": "6885f258f1718bde829b105d575351fe6b5de7fe93a29ea6c34b7950c3b4ab1f",
+    "size_bytes": 208
+  },
+  {
+    "file": "tables/requests.json",
+    "sha256": "f5ca2823053ff00987e62e1725d40f6a17eebe06ca5afdb172ca0dbe1302c4f3",
+    "size_bytes": 8267
+  },
+  {
+    "file": "tables/semantic_stock_policies.json",
+    "sha256": "e5bb5ff31101fe3436ad57aed29a2c6618e4523d06d67c9512ba309e3a8521b5",
+    "size_bytes": 220
+  },
+  {
+    "file": "tables/settings.json",
+    "sha256": "522f45b4217eef6eaaae04f85f492efdb27499f8b78a15b954a9a5dc353f4084",
+    "size_bytes": 4962
+  },
+  {
+    "file": "tables/source_profiles.json",
+    "sha256": "9acd6694a5c1ef07fa38df29a59b65dba9145452c1431a8a36fa9883ef35144a",
+    "size_bytes": 6040
+  },
+  {
+    "file": "tables/source_route_metrics.json",
+    "sha256": "4997de071a5233822a5d7397a5c3a2cfd46be8829637a4b0911e82f951fc7c79",
+    "size_bytes": 13619
+  },
+  {
+    "file": "tables/source_routing_plans.json",
+    "sha256": "50f3dba90e4a345b16303f96d6e96e201fefd80dc2e0afcb110865924f9cbbb3",
+    "size_bytes": 13756
+  },
+  {
+    "file": "tables/stage_metrics.json",
+    "sha256": "9c282dfd8790fa6265dfd8176382caeac17bc9a87704baeabae63080970086d0",
+    "size_bytes": 5382
+  },
+  {
+    "file": "tables/supervisor_config_events.json",
+    "sha256": "4923831f5eb93c3742055fc705dd2c3fc498f50b9254054e82262431712d1ed2",
+    "size_bytes": 17665
+  },
+  {
+    "file": "tables/supervisor_decision_queue.json",
+    "sha256": "0e110574eb148b695f2782c4a4ce06fc6e104926f64a60a7959553456555c77a",
+    "size_bytes": 201165
+  },
+  {
+    "file": "tables/supervisor_executions.json",
+    "sha256": "65cfc4df2f519d2fa1672aad0277ee8c824482693fc12c7de6c7c0dd16125593",
+    "size_bytes": 5907
+  },
+  {
+    "file": "tables/supervisor_plans.json",
+    "sha256": "d1f6fabb961ca50cb11ec519c16e1e28894d237b70bd66b64b760c19da66981f",
+    "size_bytes": 11421
+  },
+  {
+    "file": "tables/supervisor_project_candidates.json",
+    "sha256": "2f12304bb45207247612bcb6580d0e31e662df10ad9dce3ecfa76c0a2e8b425b",
+    "size_bytes": 148868
+  },
+  {
+    "file": "tables/worker_capacity_limits.json",
+    "sha256": "345b75f0034f28c4e474e45ae6f7d97324d061921e665ff0682a274e747c6d0a",
+    "size_bytes": 2545
+  },
+  {
+    "file": "tables/worker_events.json",
+    "sha256": "9b654379365c38f3004a416afd06ab80dde1c8447f5a5842b7ef30badf67ba43",
+    "size_bytes": 26203
+  },
+  {
+    "file": "tables/worker_sessions.json",
+    "sha256": "381883ed29ee3476ba87d978ba001921c6bfd8e066a846eddf8aed2205f6b6e8",
+    "size_bytes": 7699
+  },
+  {
+    "file": "tables/worker_work_items.json",
+    "sha256": "5e016c8462cbfcf143a196145be6d253a3d6efa3f658c6e7c6b59d7a90cf58ce",
+    "size_bytes": 266710
+  }
+]

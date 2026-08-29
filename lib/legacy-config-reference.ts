@@ -27,6 +27,6 @@ export type CloudflareConnectionManifest = {
   endpoint: string;
   d1DatabaseId: string;
   d1DatabaseName: string;
-  source: "saved" | "legacy-import" | "legacy-reference";
+  source: "environment" | "saved" | "legacy-import" | "legacy-reference";
   updatedAt: string;
 };

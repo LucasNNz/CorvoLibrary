@@ -3,10 +3,11 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { materializationFiles, materializationItems } from "../../../../db/schema";
 import { isOwnerRequest, validMcpCode } from "../../../../lib/mcp-access";
+import { validDownloadSignature } from "../../../../lib/download-signature";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const ownerRequest = await isOwnerRequest(request);
-  if (!ownerRequest && !(await validMcpCode(request))) return Response.json({ error: "Acesso ao arquivo não autorizado." }, { status: 401 });
+  if (!ownerRequest && !validDownloadSignature(request) && !(await validMcpCode(request))) return Response.json({ error: "Acesso ao arquivo não autorizado." }, { status: 401 });
   const url = new URL(request.url);
   if (!ownerRequest) {
     const expires = Number(url.searchParams.get("exp"));

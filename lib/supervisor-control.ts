@@ -20,6 +20,7 @@ import {
   supervisorProjectCandidates,
 } from "../db/schema";
 import { createSignedR2GetUrl } from "./r2-download";
+import { signedDownloadUrl } from "./download-signature";
 import { materializeUrl } from "./materializer";
 import { bridgeMaterializationToSupervisor, reconcileSupervisorMaterializations, resolveBridgedCandidate } from "./supervisor-materialization-bridge";
 import { deriveProjectPipelineState, getSupervisorLeaseTelemetry, requireSupervisorLeaseForWrite, runSupervisorWatchdog } from "./supervisor-lease";
@@ -316,7 +317,7 @@ export async function getVisualQaEvidence(projectId: string, limit = 20, origin?
     const item = itemMap.get(queued.itemId), file = fileMap.get(queued.materializationFileId), matItem = matItemMap.get(queued.materializationItemId);
     if (!item || !file || !matItem) continue;
     const expires = Date.now() + 30 * 60_000;
-    let fileUrl = origin && code ? `${origin}/api/materializations/${encodeURIComponent(file.id)}?code=${encodeURIComponent(code)}&exp=${expires}` : "";
+    let fileUrl = origin ? signedDownloadUrl(origin, `/api/materializations/${encodeURIComponent(file.id)}`, expires) : "";
     if (!fileUrl) { try { fileUrl = await createSignedR2GetUrl(file.r2Key, 30, item.targetFile || item.itemKey, file.mimeType); } catch { fileUrl = ""; } }
     output.push({
       candidate_id: queued.id, collection_candidate_id: queued.collectionCandidateId, materialization_candidate_id: queued.materializationCandidateId,

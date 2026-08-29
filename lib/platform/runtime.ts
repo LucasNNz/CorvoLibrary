@@ -132,10 +132,13 @@ function writeHttpMetadata(headers: Headers, metadata: { contentType?: string; c
 }
 
 class VercelR2Bucket {
-  async get(key: string) {
+  async get(key: string, options: { range?: { offset: number; length?: number } } = {}) {
     try {
       const { client, bucket } = await getR2Runtime();
-      const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      const range = options.range
+        ? `bytes=${Math.max(0, options.range.offset)}-${options.range.length ? Math.max(0, options.range.offset) + Math.max(1, options.range.length) - 1 : ""}`
+        : undefined;
+      const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, Range: range }));
       if (!result.Body) return null;
       const bodySource = result.Body;
       return {
@@ -143,6 +146,7 @@ class VercelR2Bucket {
         size: Number(result.ContentLength || 0),
         etag: result.ETag?.replace(/^\"|\"$/g, '') || '',
         httpEtag: result.ETag || '',
+        contentRange: result.ContentRange,
         uploaded: result.LastModified || new Date(0),
         httpMetadata: {
           contentType: result.ContentType,
@@ -163,7 +167,7 @@ class VercelR2Bucket {
         },
         body: toWebStream(bodySource),
         arrayBuffer: async () => {
-          const fresh = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+          const fresh = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key, Range: range }));
           if (!fresh.Body) throw new Error('R2_BODY_NOT_FOUND');
           return toArrayBuffer(fresh.Body);
         },

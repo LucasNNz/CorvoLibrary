@@ -1,6 +1,8 @@
 import { exportOperationsText, getManagementDashboard, getOperationalDashboard } from "../../../lib/worker-orchestration";
+import { isOwnerRequest, ownerOnly } from "../../../lib/mcp-access";
 
 export async function GET(request: Request) {
+  if (!await isOwnerRequest(request)) return ownerOnly();
   const url = new URL(request.url);
   const view = (url.searchParams.get("view") || "operational").toLowerCase();
   const format = (url.searchParams.get("format") || "json").toLowerCase();

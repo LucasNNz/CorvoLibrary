@@ -1,8 +1,9 @@
 import { env } from "../../../../lib/platform/runtime";
 import { validMcpCode } from "../../../../lib/mcp-access";
+import { validDownloadSignature } from "../../../../lib/download-signature";
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  if (!(await validMcpCode(request))) return Response.json({ error: "Código inválido." }, { status: 401 });
+  if (!validDownloadSignature(request) && !(await validMcpCode(request))) return Response.json({ error: "Código inválido." }, { status: 401 });
   const expires = Number(new URL(request.url).searchParams.get("exp"));
   if (!Number.isFinite(expires) || Date.now() > expires) return Response.json({ error: "Link expirado." }, { status: 410 });
   const { id } = await context.params;

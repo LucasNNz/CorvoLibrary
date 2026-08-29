@@ -3,27 +3,20 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("fresh Turso can bootstrap settings without terminal migrations", async () => {
-  const bootstrap = await read("lib/bootstrap-db.ts");
-  const secure = await read("lib/secure-settings.ts");
-  assert.match(bootstrap, /CREATE TABLE IF NOT EXISTS settings/);
-  assert.match(secure, /ensureBootstrapSettingsTable/);
-});
-
-test("legacy D1 to Turso migration remains available as a guarded fallback", async () => {
-  const migration = await read("lib/d1-to-turso-migration.ts");
+test("full D1 snapshot is migrated only by the resumable pre-deploy CLI", async () => {
+  const migration = await read("scripts/migrate-sqlite-to-turso.mjs");
   const route = await read("app/api/migration/d1-to-turso/route.ts");
-  assert.match(migration, /exportD1Sql/);
-  assert.match(migration, /TURSO_TARGET_HAS_APPLICATION_DATA/);
-  assert.match(migration, /D1_TURSO_COUNT_MISMATCH/);
-  assert.match(route, /SUBSTITUIR_TURSO_PELO_D1/);
-  assert.match(route, /maxDuration = 300/);
+  assert.match(migration, /migration.*full-backup.*database\.sql/s);
+  assert.match(migration, /corvo_migration_state/);
+  assert.match(migration, /MIGRATION_COUNT_MISMATCH/);
+  assert.match(route, /RUNTIME_D1_MIGRATION_DISABLED/);
+  assert.match(route, /RUNTIME_D1_ROLLBACK_DISABLED/);
+  assert.doesNotMatch(route, /getD1ToTursoPreflight/);
 });
 
-test("FIX14 production UI no longer requires legacy D1 migration", async () => {
+test("production UI describes the persistent integral base", async () => {
   const page = await read("app/page.tsx");
-  assert.match(page, /Base de produção — automática/);
-  assert.match(page, /Turso é a fonte oficial/);
-  assert.match(page, /D1 LEGADO \(OPCIONAL\)/);
+  assert.match(page, /Base integral migrada/);
+  assert.match(page, /47 tabelas · 39\.294 registros originais · 929 assets/);
   assert.match(page, /const legacyMigrationRequired = false/);
 });

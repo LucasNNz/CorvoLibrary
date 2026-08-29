@@ -15,9 +15,10 @@ export async function getOrCreateMcpCode() {
   await ensureBootstrapSettingsTable();
   const db = getDb();
   const [existing] = await db.select().from(settings).where(eq(settings.key, MCP_KEY)).limit(1);
-  if (existing?.value) return existing.value;
+  if (existing?.value && existing.value !== "[REDACTED_SECRET]") return existing.value;
   const code = newCode();
-  await db.insert(settings).values({ key: MCP_KEY, value: code }).onConflictDoNothing();
+  await db.insert(settings).values({ key: MCP_KEY, value: code, updatedAt: new Date() })
+    .onConflictDoUpdate({ target: settings.key, set: { value: code, updatedAt: new Date() } });
   const [created] = await db.select().from(settings).where(eq(settings.key, MCP_KEY)).limit(1);
   return created?.value ?? code;
 }

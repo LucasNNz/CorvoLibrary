@@ -31,6 +31,22 @@ export type SupervisorConnection = {
   externalToken: string;
 };
 
+function environmentCloudflareConnection(): CloudflareConnection | null {
+  const accountId = process.env.R2_ACCOUNT_ID?.trim() || process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || "";
+  const endpoint = process.env.R2_ENDPOINT?.trim() || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : "");
+  const bucket = process.env.R2_BUCKET?.trim() || process.env.CLOUDFLARE_R2_BUCKET?.trim() || "";
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() || "";
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() || "";
+  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) return null;
+  return {
+    accountId: accountId || new URL(endpoint).hostname.replace(/\.r2\.cloudflarestorage\.com$/, ""),
+    endpoint, bucket, accessKeyId, secretAccessKey,
+    d1ApiToken: process.env.CLOUDFLARE_API_TOKEN?.trim() || "",
+    d1DatabaseId: process.env.CLOUDFLARE_D1_DATABASE_ID?.trim() || "",
+    d1DatabaseName: process.env.CLOUDFLARE_D1_DATABASE_NAME?.trim() || "",
+  };
+}
+
 function normalizeCloudflareConnection(connection: CloudflareConnection): CloudflareConnection {
   const accountValue = connection.accountId.trim();
   const base = {
@@ -47,7 +63,6 @@ function normalizeCloudflareConnection(connection: CloudflareConnection): Cloudf
 }
 
 async function getCloudflareManifest(): Promise<CloudflareConnectionManifest | null> {
-  await ensureBootstrapSettingsTable();
   const [row] = await getDb().select().from(settings).where(eq(settings.key, CLOUDFLARE_MANIFEST_KEY)).limit(1);
   if (!row?.value) return null;
   try {
@@ -93,9 +108,18 @@ async function saveCloudflareManifest(connection: CloudflareConnection, source: 
 }
 
 export async function getCloudflareConnection() {
-  await ensureBootstrapSettingsTable();
+  const environment = environmentCloudflareConnection();
   const [row] = await getDb().select().from(settings).where(eq(settings.key, CLOUDFLARE_KEY)).limit(1);
   const manifest = await getCloudflareManifest() || referenceManifest();
+  if (environment) {
+    return {
+      connection: environment,
+      manifest: { ...manifest, accountId: environment.accountId, bucket: environment.bucket, accessKeyId: environment.accessKeyId, endpoint: environment.endpoint || "", source: "environment" as const },
+      updatedAt: null,
+      locked: false,
+      environmentManaged: true,
+    };
+  }
   if (!row?.value) return { connection: null, manifest, updatedAt: null, locked: false };
   try {
     const connection = normalizeCloudflareConnection(await decryptPersistedConfig<CloudflareConnection>(row.value));
@@ -194,7 +218,7 @@ export function safeCloudflareConnection(value: Awaited<ReturnType<typeof getClo
     d1DatabaseId: connection.d1DatabaseId || "",
     d1DatabaseName: connection.d1DatabaseName || "",
     hasD1Token: Boolean(connection.d1ApiToken),
-    needsReconfigure: false,
+    needsReconfigure: false, environmentManaged: Boolean("environmentManaged" in value && value.environmentManaged),
     encryptionBootstrap: persistedConfigKeySource(),
     updatedAt: value.updatedAt,
     configReference: value.manifest?.source || "saved", inheritedProfile: Boolean(value.manifest?.source === "legacy-import"),

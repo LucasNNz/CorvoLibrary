@@ -29,7 +29,7 @@ function normalizeUsername(value: string) {
 }
 
 function validatePassword(password: string) {
-  if (password.length < 4 || password.length > 128) throw new Error("PASSWORD_INVALID");
+  if (password.length < 12 || password.length > 128) throw new Error("PASSWORD_INVALID");
 }
 
 async function getAuth(): Promise<AuthRecord | null> {
@@ -90,9 +90,15 @@ async function clearAllSessions() {
 }
 
 export async function setupLibraryAuth(usernameRaw: string, password: string, remember = true) {
-  if (await getAuth()) throw new Error("AUTH_ALREADY_CONFIGURED");
   const username = normalizeUsername(usernameRaw); validatePassword(password);
-  await saveAuth(username, password);
+  await ensureBootstrapSettingsTable();
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await derivePassword(password, salt);
+  const now = new Date();
+  const value: AuthRecord = { version:1, username, salt:b64(salt), passwordHash:b64(hash), iterations:PASSWORD_ITERATIONS, updatedAt:now.toISOString() };
+  const inserted = await getDb().insert(settings).values({ key:AUTH_KEY, value:JSON.stringify(value), updatedAt:now })
+    .onConflictDoNothing().returning({ key: settings.key });
+  if (!inserted.length) throw new Error("AUTH_ALREADY_CONFIGURED");
   await ensureLibraryMasterKey(password);
   await clearAllSessions();
   const session = await createSession(username, remember);

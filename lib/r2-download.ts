@@ -24,16 +24,19 @@ function normalizedR2Endpoint(accountId: string, configuredEndpoint?: string) {
 
 
 async function resolveR2SigningConnection() {
-  const saved = await getCloudflareConnection();
   const envAccountId = process.env.R2_ACCOUNT_ID?.trim() || process.env.CLOUDFLARE_ACCOUNT_ID?.trim() || "";
   const envEndpoint = process.env.R2_ENDPOINT?.trim() || "";
   const envBucket = process.env.R2_BUCKET?.trim() || process.env.CLOUDFLARE_R2_BUCKET?.trim() || "";
   const envAccessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() || "";
   const envSecretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() || "";
-  const connection = saved?.connection || ((envAccountId || envEndpoint) && envBucket && envAccessKeyId && envSecretAccessKey ? {
+  const environmentConnection = (envAccountId || envEndpoint) && envBucket && envAccessKeyId && envSecretAccessKey ? {
     accountId: envAccountId || new URL(envEndpoint).hostname.replace(/\.r2\.cloudflarestorage\.com$/, ""),
     bucket: envBucket, accessKeyId: envAccessKeyId, secretAccessKey: envSecretAccessKey, endpoint: envEndpoint,
-  } : null);
+  } : null;
+  // Vercel environment variables are the production source of truth. A stale
+  // encrypted record imported from D1 must never shadow a working deployment.
+  const saved = environmentConnection ? null : await getCloudflareConnection();
+  const connection = environmentConnection || saved?.connection || null;
   if (!connection) throw new Error("R2_SIGNING_NOT_CONFIGURED");
   const endpoint = normalizedR2Endpoint(connection.accountId, connection.endpoint);
   const aws = new AwsClient({ accessKeyId: connection.accessKeyId, secretAccessKey: connection.secretAccessKey, service: "s3", region: "auto" });

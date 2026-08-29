@@ -75,14 +75,16 @@ test('MCP mutations wake dispatcher in background via waitUntil without delaying
   assert.doesNotMatch(hot, /runInternalWorkerDispatcher\(/);
 });
 
-test('manual/external MCP recovery self-heals READY queues and then performs plan fan-in', async () => {
+test('authenticated cron and manual recovery self-heal READY queues and perform plan fan-in', async () => {
   const dataPlane = await read('lib/data-plane.ts');
   assert.match(dataPlane, /runDataPlaneRecovery/);
   assert.match(dataPlane, /await pumpDataPlane\(source/);
   const route = await read('app/api/internal/data-plane/route.ts');
   assert.match(route, /MANUAL_RECOVERY:/);
+  assert.match(route, /CRON_SECRET/);
+  assert.match(route, /Bearer/);
   const vercel = JSON.parse(await read('vercel.json'));
-  assert.ok(!Array.isArray(vercel.crons) || vercel.crons.length === 0);
+  assert.ok(vercel.crons.some((cron) => cron.path === '/api/internal/data-plane'));
   const plan = await read('lib/supervisor-plan-engine.ts');
   const tick = plan.slice(plan.indexOf('export async function runSupervisorPlansTick'));
   assert.match(tick, /runInternalWorkerDispatcher/);
