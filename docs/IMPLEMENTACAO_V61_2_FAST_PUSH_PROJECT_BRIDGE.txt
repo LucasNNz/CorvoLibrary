@@ -1,0 +1,59 @@
+CORVO LIBRARY V61.2 — FAST PUSH CANONICAL PROJECT BRIDGE
+
+OBJETIVO
+Garantir que candidatas ingeridas por FAST PUSH sejam vinculadas ao projeto pela mesma trilha canônica usada pelo fluxo normal de Pendentes/QA do Supervisor.
+
+REGRA OPERACIONAL PARA A IA
+1. Antes de empurrar para um projeto, chamar listar_destinos_fast_push_projeto(project_id).
+2. Usar o project_item_id (PITEM canônico) retornado em cada item do FAST PUSH.
+3. importar_candidatas_url_lote / importar_candidata_arquivo_fast_push salva o arquivo uma única vez no R2 e cria automaticamente uma representação canônica de materialização que aponta para o mesmo r2_key.
+4. A ponte bridgeMaterializationToSupervisor registra supervisor_project_candidates.
+5. A primeira candidata válida do PITEM vira PARA_QA_VISUAL e o automatic_project_item vira QA_READY.
+6. Candidatas adicionais do mesmo PITEM entram como PARA_ANALISE, sem substituir silenciosamente a candidata ativa.
+7. supervisor_decision_queue recebe/atualiza a decisão QA_VISUAL da mesma forma que na materialização normal.
+8. getVisualQaEvidence consegue entregar o arquivo físico real à IA porque materialization_file_id aponta para o mesmo objeto do FAST PUSH no R2.
+9. O retorno do PUSH expõe project_item_id, project_link_status e supervisor_candidate_id.
+10. Se o PUSH foi feito sem vínculo, vincular_candidatas_fast_push_ao_projeto faz backfill usando os bytes já persistidos, sem redownload.
+
+ESTADOS DE VÍNCULO
+PENDING_PROJECT_BRIDGE
+LINKED_PARA_QA_VISUAL
+LINKED_PARA_ANALISE
+PROJECT_ITEM_NOT_FOUND
+AMBIGUOUS_PROJECT_ITEM
+PROJECT_ITEM_ALREADY_RESOLVED
+PROJECT_LOCKED
+BRIDGE_ERROR
+
+GARANTIA DE NÃO-SUCESSO-SILENCIOSO
+Quando project_id é informado, a candidata preserva project_link_status. O Supervisor pode verificar explicitamente se a ponte foi criada. Falha de associação não é convertida em sucesso genérico.
+
+APROVAÇÃO / REJEIÇÃO
+A decisão FAST PUSH sincroniza também supervisor_project_candidates e supervisor_decision_queue.
+- APROVAR: promove asset, registra uso, congela o PITEM e resolve a decisão canônica como APROVADO.
+- REJEITAR: marca a candidata canônica como REJEITADO; se era a candidata ativa, promove a próxima PARA_ANALISE para PARA_QA_VISUAL. Sem próxima, o item retorna a RELINK_REQUIRED.
+- decisão manual continua com precedência sobre AI.
+
+SEM DUPLICAÇÃO DE BYTES
+A ponte cria materialization_batch/item/candidate/file apenas como evidência canônica de workflow. materialization_files.r2_key referencia o arquivo já salvo pelo FAST PUSH. Não há segundo download nem segunda cópia física obrigatória.
+
+MIGRATION
+0020_fast_push_project_bridge.sql
+
+NOVAS FERRAMENTAS MCP
+- listar_destinos_fast_push_projeto
+- vincular_candidatas_fast_push_ao_projeto
+
+FERRAMENTAS ALTERADAS
+- importar_candidatas_url_lote
+- importar_candidata_arquivo_fast_push
+- listar_inbox_candidatas
+- aprovar_candidatas_fast_push_lote
+- rejeitar_candidatas_fast_push_lote
+
+SINCRONIA COM A ROTA PADRAO DE QA DO PROJETO
+- A aprovacao pelo caminho normal da IA (registrar_qa_projeto -> qaAutomaticProject -> registrar_qa_lote) reconhece routeClass FAST_PUSH_CANONICAL.
+- Ao aprovar, o mesmo asset congelado pelo materializador canonico atualiza tambem fast_push_candidates para PROMOTED_TO_ASSET e RESOLVED_APPROVED.
+- Ao rejeitar, fast_push_candidates vira REJECTED / RESOLVED_REJECTED.
+- Rejeicao de FAST_PUSH_CANONICAL NAO reexecuta processItems/materializador pesado; a ponte supervisor promove a proxima candidata PARA_ANALISE para PARA_QA_VISUAL quando existir.
+- O retorno do PUSH possui project_linked e requires_project_link; portanto a IA nunca deve interpretar ingestao R2 como vinculo ao projeto quando a ponte canonica falhar.

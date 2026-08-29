@@ -1,0 +1,30 @@
+import { loginLibrary } from "../../../../lib/auth";
+import { getDatabaseBootstrapState } from "../../../../lib/platform/database-bootstrap";
+import { assertLoginAllowed, clearLoginFailures, recordLoginFailure } from "../../../../lib/auth-rate-limit";
+
+export async function POST(request: Request) {
+  const bootstrap = getDatabaseBootstrapState();
+  if (!bootstrap.ready) {
+    return Response.json({
+      error: "DATABASE_BOOTSTRAP_REQUIRED",
+      missing: bootstrap.missing,
+      marketplaceUrl: bootstrap.marketplaceUrl,
+    }, { status: 503, headers: { "cache-control": "no-store" } });
+  }
+  try {
+    await assertLoginAllowed(request);
+    const body = await request.json() as { username?:string; password?:string; remember?:boolean };
+    const result = await loginLibrary(String(body.username || ""), String(body.password || ""), body.remember !== false);
+    await clearLoginFailures(request);
+    return Response.json({ configured:true, authenticated:true, username:result.username }, { headers:{"set-cookie":result.cookie,"cache-control":"no-store"} });
+  } catch (error) {
+    const message=error instanceof Error?error.message:String(error);
+    if (message === "INVALID_LOGIN") await recordLoginFailure(request).catch(() => undefined);
+    if (message.startsWith("LOGIN_RATE_LIMITED:")) {
+      const retryAfter = message.split(":")[1] || "900";
+      return Response.json({ error:"LOGIN_RATE_LIMITED" }, { status:429, headers:{"retry-after":retryAfter,"cache-control":"no-store"} });
+    }
+    const databaseFailure = /TURSO|LIBSQL|DATABASE|SQLITE|VERCEL_ENV_REQUIRED/i.test(message);
+    return Response.json({error: databaseFailure ? "DATABASE_CONNECTION_FAILED" : message},{status:databaseFailure ? 503 : message==="INVALID_LOGIN"?401:400});
+  }
+}

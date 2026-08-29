@@ -1,0 +1,240 @@
+CORVO LIBRARY / BIBLIOTECA SEMÂNTICA
+V59 — REJEITAR + CONTINUAR / REDUÇÃO DE CHATTER
+Data: 2026-08-27
+
+OBJETIVO PRINCIPAL
+------------------
+Regra operacional desta versão:
+
+REJEITAR E CONTINUAR DEVE SER UMA ÚNICA OPERAÇÃO DO SUPERVISOR.
+
+A rejeição não pode exigir o ciclo:
+rejeitar -> confirmar -> obter estado -> continuar -> buscar próxima candidata.
+
+A V59 transforma esse fluxo em:
+QA REJEITA
+-> persiste a rejeição
+-> descarta a candidata
+-> promove próxima candidata ou envia o item para coleta/relink
+-> atualiza somente a unidade de fila afetada
+-> mantém os demais workers independentes
+-> retorna o próximo work packet
+-> persiste resultado recuperável por operation_id.
+
+IMPORTANTE SOBRE "ATÔMICO"
+----------------------------
+A atomicidade desta versão é operacional/API: uma única chamada MCP representa a decisão completa do Supervisor e é idempotente. A implementação não afirma que toda a cadeia de D1/R2 seja uma única transação SQL longa; operações externas e filas continuam desacopladas para não bloquear o pipeline.
+
+1. REJEITAR + CONTINUAR
+-----------------------
+`rejeitar_candidata` agora aceita:
+- projeto_id
+- item_id
+- candidate_id opcional/recomendado
+- operation_id opcional
+- limite_pacote
+- execution_id
+
+A resposta inclui:
+- success
+- operation_id
+- decision=REJEITADO
+- item_state=NEXT_CANDIDATE ou RELINK_QUEUE
+- persisted_item_status
+- project_state
+- project_version
+- project_counts
+- next_work_packet
+- next_actions
+- lease
+
+candidate_id impede uma decisão atrasada de rejeitar acidentalmente a candidata seguinte já promovida.
+
+2. TIMEOUT COM OPERAÇÃO PERSISTIDA
+----------------------------------
+O resultado base da rejeição é salvo em `operation_results` imediatamente depois da mutação persistir e antes do enriquecimento do work packet.
+
+Se o cliente expirar depois disso:
+- NÃO repetir rejeitar_candidata;
+- usar obter_resultado_operacao(operation_id), quando conhecido;
+- ou obter_ultima_operacao(projeto_id, ferramenta="rejeitar_candidata").
+
+O resultado pode ser enriquecido novamente no final da mesma chamada se o snapshot estiver disponível.
+
+3. NEXT_CANDIDATE / RELINK AUTOMÁTICO
+-------------------------------------
+Após rejeição:
+- se existe próxima candidata materializada promovível -> QA_READY / NEXT_CANDIDATE;
+- se não existe alternativa pronta -> volta para SEARCHING_EXTERNALLY / NEXT_CANDIDATE;
+- após duas rejeições semânticas sem alternativa pronta -> RELINK_REQUIRED / RELINK_QUEUE.
+
+Isso evita insistência indefinida na mesma referência/rota.
+
+4. OUTROS WORKERS NÃO PARAM
+---------------------------
+A rejeição usa `syncWorkerItemsQueue(projectId,[itemId])`.
+Não executa sync/reconcile global do projeto.
+Não chama processAutomaticProject escondido.
+Não bloqueia outros itens em coleta/materialização/QA.
+
+5. QA EM LOTE
+-------------
+`aplicar_decisoes_supervisor_lote`:
+- operation_id tornou-se opcional;
+- servidor gera ID quando ausente;
+- payload `decisoes` é validado defensivamente;
+- evita Object.keys/Object.entries sobre payload nulo;
+- usa processar_apos=false;
+- usa o project_version/project_counts já retornado pelo QA, sem segunda varredura redundante;
+- persiste resultado base antes de montar o pacote final;
+- sincroniza somente itens alterados;
+- retorna next_work_packet e next_actions.
+
+6. SNAPSHOT OPERACIONAL COMPACTO
+--------------------------------
+`getOperationalSnapshot` / `obter_snapshot_operacional` retorna somente o necessário ao loop do Supervisor:
+- version / delta
+- counts
+- lease
+- next_actions
+- work_packet.qa
+- work_packet.relink
+- work_packet.technical
+- source_decisions relevantes
+
+Foi removido do hot path:
+- perfis completos
+- dump de circuit breakers
+- throughput histórico
+- capacity planning
+- histórico de workers
+- métricas gerenciais
+
+Esses dados continuam nas ferramentas/painéis específicos.
+
+Todas as listas do work packet usam fallback defensivo para [] caso uma consulta opcional falhe.
+
+7. OBTEM_ESTADO_SUPERVISOR POR PROJETO
+--------------------------------------
+A consulta quente por projeto passou a reutilizar o mesmo snapshot compacto.
+Retorno operacional:
+- projeto mínimo
+- counts
+- lease
+- QA
+- relink
+- technical
+- source_decisions
+- next_actions
+
+O estado por projeto não devolve perfis completos, breakers históricos, lotes detalhados ou métricas gerenciais.
+
+8. LEASE FAST PATH
+------------------
+A aquisição do Supervisor não executa mais, no caminho crítico:
+- watchdog global
+- backfill
+- reconciliação
+- sync global de filas
+- deriveProjectPipelineState por varredura de itens.
+
+`acquireNextSupervisorWork` seleciona candidatos diretamente no D1, pulando leases válidos na própria query, e chama o CAS de lease.
+
+`acquireSupervisorLease` também não roda watchdog antes do CAS. Lease expirado é tomado diretamente pelo CAS e a execução anterior é classificada localmente como ABANDONADA quando aplicável.
+
+O handler MCP devolve `execution_id` + um hint compacto do projeto.
+
+9. PRECHECK SEMÂNTICO
+---------------------
+Foi adicionado um precheck conservador antes da materialização para universos conhecidos, inicialmente Naruto e My Hero Academia.
+
+Se o target explicita uma entidade conhecida e URL/thumbnail explicita outra entidade conflitante, a candidata é descartada antes da materialização.
+
+Além disso, para esses universos anime, fontes genéricas de alta entropia (Openverse/Wikimedia/Pexels/Pixabay) não são usadas nas duas primeiras rodadas. Elas ficam como fallback tardio.
+
+O precheck NÃO finge QA visual. Se URL/thumbnail não trouxer evidência semântica suficiente, a decisão visual continua pertencendo ao Supervisor.
+
+10. SOURCE_PROFILE DOMAIN
+-------------------------
+Migração 0015:
+- FANDOM_WIKIA_ANIME -> ANIME
+- ZEROCHAN_ANIME -> ANIME
+- YOUTUBE_CONTEXTUAL -> MULTI
+- PINTEREST_DISCOVERY -> MULTI
+
+Assim, perfis não ficam mais GENERAL indevidamente e os compartilhados continuam válidos para múltiplos nichos.
+
+11. CIRCUIT BREAKERS ANTIGOS
+----------------------------
+A migração fecha somente breakers OPEN/HALF_OPEN já expirados:
+- circuit_state=CLOSED
+- blocked_until=NULL
+- recent_failure_count=0
+
+Breakers ainda válidos continuam ativos.
+O snapshot quente não devolve o dump histórico de breakers.
+
+12. OPERATION RECOVERY
+----------------------
+Nova ferramenta:
+`obter_ultima_operacao(projeto_id, ferramenta)`
+
+Também permanece:
+`obter_resultado_operacao(operation_id)`
+
+Novo índice:
+idx_operation_results_project_tool_updated(project_id, tool, updated_at DESC)
+
+13. MIGRAÇÃO
+------------
+Nova migração:
+0015_reject_continue_chatter_reduction.sql
+
+É aditiva/não destrutiva. Não contém DELETE, DROP TABLE ou DROP COLUMN.
+
+14. MCP
+-------
+Versão MCP: 5.9.0
+Policy version: V59
+Ferramentas: 158
+Handlers: 158
+Órfãos: 0
+Duplicados: 0
+Baixo risco esperado: 154
+Destrutivas: 3
+Sensível: 1
+
+15. VALIDAÇÕES
+--------------
+- regressão funcional sem rendered-html: 53/53 PASS
+- testes específicos V59 incluídos
+- TypeScript/TSX parse: 53 arquivos, 0 erros
+- migrações 0000 -> 0015: 16/16 OK em SQLite limpo
+- cenário de domínio:
+  Fandom/Wikia = ANIME
+  Zerochan = ANIME
+  YouTube contextual = MULTI
+  Pinterest discovery = MULTI
+- breaker expirado: fechado
+- breaker ainda válido: preservado OPEN
+- ferramentas MCP = handlers MCP: 158/158
+
+16. BUILD
+---------
+`npm run build` foi tentado.
+O ambiente local desta execução não possui `vinext`/node_modules instalados e o script retornou:
+"vinext is unavailable. Run npm run install:ci ..."
+
+Portanto o build Vinext completo NÃO é declarado como validado.
+As validações de sintaxe, regressão, migração e superfície MCP passaram independentemente.
+
+RESULTADO
+---------
+A V59 reduz o caminho normal do Supervisor para:
+
+SNAPSHOT/WORK PACKET
+-> DECISÃO EM LOTE OU REJEITAR+CONTINUAR
+-> RESPOSTA COM NOVO PACOTE
+-> DELTA/SNAPSHOT SE NECESSÁRIO
+
+Sem GET obrigatório de confirmação e sem reiniciar o projeto por uma rejeição individual.

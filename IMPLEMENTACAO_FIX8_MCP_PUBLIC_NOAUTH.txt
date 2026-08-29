@@ -1,0 +1,22 @@
+CORVO LIBRARY V61.9 — FIX8 MCP PUBLIC / NO-AUTH COMPATIBILITY
+
+Objetivo:
+- painel humano continua protegido por nome + senha da Library;
+- endpoint /c/<codigo>/mcp NÃO usa cookie, login do painel, OAuth ou Bearer;
+- no ChatGPT o tipo de autenticação é NONE / Sem autenticação;
+- o código aleatório no próprio caminho funciona como capability URL revogável.
+
+Mudanças:
+1. HEAD /c/<codigo>/mcp = 204, sem redirect/login.
+2. GET válido = 200 JSON de reachability/transport, sem login.
+3. Código inválido retorna 404, não 401; não dispara negotiation de autenticação.
+4. OPTIONS permanece público; CORS inclui HEAD.
+5. POST JSON-RPC continua validando o código da capability URL.
+6. SecuritySchemes das tools continua noauth.
+7. A tela/API de conexão explicita Authentication=None.
+
+IMPORTANTE — VERCEL:
+O código da aplicação NÃO consegue contornar Vercel Authentication / Deployment Protection.
+Para ChatGPT alcançar o MCP, o domínio de PRODUÇÃO deve ser público na Vercel.
+Desative Vercel Authentication/Deployment Protection para Production (ou para o projeto, conforme o plano).
+A segurança do painel continua no login interno da Corvo Library, e o MCP continua protegido pela URL secreta revogável.

@@ -1,0 +1,20 @@
+CORVO LIBRARY V61.9 — CONFIGURAÇÃO PERSISTENTE
+
+OBJETIVO
+Nenhuma credencial Cloudflare precisa ser repetida em cada PC nem mantida em TXT/código.
+
+USO
+1. Abrir Configurações -> Cloudflare — R2 + D1.
+2. Informar Account ID, R2 e API Token D1.
+3. Database ID/Nome D1 podem ficar vazios; o app procura o banco da Corvo Library pela estrutura das tabelas.
+4. Clicar SALVAR E CRAVAR CONFIGURAÇÃO.
+5. O backend testa R2 e D1 antes de persistir.
+6. A configuração é criptografada e salva na tabela settings do Turso.
+7. Qualquer PC que abrir a mesma Library passa a usar a mesma configuração automaticamente.
+
+SEGURANÇA
+- Secret Access Key e API Token D1 nunca são devolvidos ao navegador.
+- A API só devolve flags hasSecret / hasD1Token.
+- CORVO_CONFIG_ENCRYPTION_KEY deixou de ser obrigatória; se ausente, a criptografia usa um segredo derivado do TURSO_AUTH_TOKEN provisionado pela integração do banco.
+- Se o D1 importado trouxer um ciphertext legado impossível de descriptografar, a UI continua funcionando e permite sobrescrever com credenciais novas.
+- Variáveis R2_* e CLOUDFLARE_* continuam apenas como fallback/recuperação, não como fluxo operacional normal.

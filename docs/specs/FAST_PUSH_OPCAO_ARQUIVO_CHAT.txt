@@ -1,0 +1,78 @@
+FAST PUSH — OPÇÃO DE ARQUIVO JÁ PRESENTE NO CHAT
+
+OBJETIVO
+Adicionar ao FAST PUSH uma opção secundária para aproveitar imagens que já foram obtidas e estão disponíveis como arquivo no ambiente da conversa do ChatGPT.
+
+IMPORTANTE
+A rota principal continua sendo a já existente:
+
+URL pública encontrada
+→ FAST PUSH por URL
+→ Biblioteca baixa a mídia diretamente
+→ salva no R2/D1
+→ vincula ao projeto/item quando informado
+
+Essa continua sendo a rota padrão e preferencial.
+
+NOVA OPÇÃO: ARQUIVO JÁ PRESENTE NO CHAT
+Quando a coleta, uma ferramenta ou outro processo já tiver trazido a imagem para o chat como arquivo real, o sistema deve poder usar esse arquivo diretamente, sem obrigar uma nova materialização por URL.
+
+Fluxo:
+
+Imagem já disponível no ambiente da conversa
+→ FAST PUSH FILE
+→ Biblioteca recebe o arquivo diretamente
+→ salva uma única vez no R2
+→ registra no D1
+→ se project_id + item_id/PITEM ou target_file forem informados, cria a candidata diretamente dentro daquele item do projeto
+→ status inicial: PARA_QA_VISUAL / PENDING_ANALYSIS
+→ analista apenas APROVA ou REJEITA
+
+REGRA DE ROTEAMENTO
+
+1. Existe URL pública utilizável:
+   usar FAST PUSH URL.
+   Essa é a rota principal.
+
+2. O arquivo já está presente no ambiente do ChatGPT:
+   permitir FAST PUSH FILE como atalho opcional.
+   Não baixar novamente da fonte.
+   Não gerar URL intermediária apenas para rebaixar o mesmo arquivo.
+   Não duplicar o arquivo no R2.
+
+3. Arquivo já presente + destino de projeto conhecido:
+   receber também:
+   - project_id
+   - item_projeto_id / PITEM, quando disponível
+   - target_file
+   - semantic_reference
+   - visual_reference, quando disponível
+
+   O arquivo deve entrar diretamente como candidata daquele item do projeto.
+
+4. Arquivo já presente + destino ainda desconhecido:
+   enviar para Inbox/Pendentes normalmente, para classificação posterior.
+
+COMPORTAMENTO ESPERADO
+
+O FAST PUSH FILE não substitui o FAST PUSH URL.
+
+Ele existe apenas como um caminho adicional para situações em que o ChatGPT já possui fisicamente a imagem no ambiente da conversa.
+
+O sistema não deve transformar:
+
+arquivo já disponível no ChatGPT
+→ URL temporária
+→ novo download
+→ nova cópia no R2
+
+O caminho desejado é:
+
+arquivo já disponível no ChatGPT
+→ Biblioteca
+→ R2/D1
+→ projeto/PITEM, se informado
+
+RESULTADO ESPERADO
+
+Aproveitar imediatamente imagens que já foram coletadas no chat, evitando repetir a etapa de materialização e permitindo que grandes lotes de candidatas sejam empurrados rapidamente para dentro do projeto para posterior aprovação/rejeição pelo analista.

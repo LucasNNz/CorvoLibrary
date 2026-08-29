@@ -1,0 +1,88 @@
+import { executeTool, tools } from "../../lib/mcp-tools";
+import { getMcpCodeFromRequest, validMcpCode } from "../../lib/mcp-access";
+import { isMcpFileResourceDeliveryEnabled } from "../../lib/industrial-supervisor";
+import { wakeDataPlane } from "../../lib/data-plane";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const headers = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, accept, mcp-protocol-version, mcp-session-id, last-event-id", "access-control-expose-headers": "mcp-session-id, mcp-protocol-version", "access-control-allow-methods": "POST, GET, HEAD, DELETE, OPTIONS", "x-content-type-options": "nosniff", "vary": "accept" };
+const response = (body: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(body), { status, headers: { ...headers, ...extraHeaders } });
+const error = (id: unknown, code: number, message: string) => response({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
+
+export async function OPTIONS() { return new Response(null, { status: 204, headers }); }
+
+// ChatGPT custom apps can be configured with Authentication = None.
+// The unguessable /c/<code>/mcp URL is a revocable capability URL, not an
+// interactive HTTP authentication scheme. HEAD/GET intentionally never
+// redirect to the Library login and never emit WWW-Authenticate.
+export async function HEAD() {
+  return new Response(null, { status: 204, headers: { ...headers, "x-corvo-mcp": "ready", allow: "POST, GET, HEAD, OPTIONS" } });
+}
+
+export async function GET(request: Request) {
+  if (!(await validMcpCode(request))) return response({ error: "MCP endpoint not found." }, 404, { "x-corvo-mcp": "invalid-capability" });
+  return response({
+    ok: true,
+    name: "corvo-library",
+    transport: "streamable_http",
+    authentication: "none",
+    message: "MCP ready. Send JSON-RPC messages with POST.",
+  }, 200, { allow: "POST, GET, HEAD, OPTIONS", "x-corvo-mcp": "ready" });
+}
+
+export async function DELETE(request: Request) {
+  if (!(await validMcpCode(request))) return response({ error: "MCP endpoint not found." }, 404, { "x-corvo-mcp": "invalid-capability" });
+  return response({ jsonrpc: "2.0", id: null, error: { code: -32000, message: "Sessões não são mantidas neste servidor." } }, 405, { allow: "POST, GET, HEAD, OPTIONS" });
+}
+
+export async function POST(request: Request) {
+  const authStart = Date.now();
+  if (!(await validMcpCode(request))) return response({ error: "MCP endpoint not found." }, 404, { "x-corvo-mcp": "invalid-capability" });
+  const authMs = Date.now() - authStart, parseStart = Date.now();
+  let message: Record<string, unknown>;
+  try { message = await request.json() as Record<string, unknown>; } catch { return error(null, -32700, "JSON inválido."); }
+  const parseMs = Date.now() - parseStart;
+  const requestId = message.id, method = String(message.method ?? ""), params = message.params && typeof message.params === "object" ? message.params as Record<string, unknown> : {};
+  if (method === "notifications/initialized" || method === "notifications/cancelled") return new Response(null, { status: 202, headers });
+  if (method === "initialize") {
+    const requestedVersion = String(params.protocolVersion ?? "");
+    const protocolVersion = /^\d{4}-\d{2}-\d{2}$/.test(requestedVersion) ? requestedVersion : "2025-03-26";
+    return response({ jsonrpc: "2.0", id: requestId, result: { protocolVersion, capabilities: { tools: { listChanged: false } }, serverInfo: { name: "corvo-library", title: "Corvo Library", version: "6.1.9" }, instructions: "V61.8 ativa por padrão o modo industrial LINKS_ONLY: nenhum resource_link de arquivo é entregue ao chat enquanto CHAT_FILE_DELIVERY_MODE=OFF; QA usa fast_visual_packet com URLs assinadas do R2, decisões usam fast_decidir_candidatas_lote/FAST_APPROVE_PROJECT_ITEMS e acompanhamento usa work_packet_lite/obter_resumo_operacional_curto. Rotas legadas de QA são redirecionadas para links-only. V61.7 adiciona FAST_APPROVE_PROJECT_ITEMS: uma rota super enxuta que recebe pares PITEM+candidata e retorna ACK imediato com operation_id, sem carregar o lote inteiro nem esperar reconciliação síncrona; APPROVED -> frozen_asset_id -> contadores do projeto continua no Data Plane e o acompanhamento segue por obter_resultado_operacao. V61.6 transforma aplicar_decisoes_supervisor_lote em FAST ACK real: a chamada apenas valida lease, persiste atomicamente o recibo operation_id + job de decisões e retorna QUEUED imediatamente; freeze, R2, catalogação, uso, contadores e fan-out rodam depois no Data Plane via waitUntil + agendamento MCP externo. Use obter_resultado_operacao para acompanhar PROCESSING/COMPLETED sem repetir a mutação. A finalização de PITEMs distintos usa paralelismo limitado e jobs interrompidos são retomáveis por lease. V61.5 adiciona decisão FAST PUSH em lote: prefira decidir_candidatas_lote para APROVAR/REJEITAR rapidamente por candidate_ids ou por PITEM/target_file. rejeitar_itens_lote rejeita todas as candidatas ativas dos PITEMs informados sem tocar assets já promovidos; aprovação por PITEM só ocorre quando há uma única candidata ativa, caso contrário retorna AMBIGUOUS_REQUIRES_CANDIDATE_ID. excluir_candidatas_lote é hard delete raro/destrutivo, exige confirmação explícita e só apaga bytes R2 quando não há outras referências. V61.4 transforma cada project_id em pacote central de produção para agentes paralelos. Imagens de roteiro continuam no FAST PUSH URL/FILE canônico com project_id + PITEM e entram em Pendentes/QA. Thumbs pertencem ao projeto inteiro, não a PITEM: use fast_push_generated_media/fast_push_thumbs_url_lote quando houver URL HTTPS ou preparar_upload_midia + confirmar_upload_midia para upload direto ao R2. FAST PUSH THUMB por arquivo do chat está desativado no modo industrial. Ideias de título entram como registros estruturados via fast_push_titulos. Agentes de roteiro, imagens, thumb e títulos devem contribuir para o MESMO project_id, nunca criar projetos paralelos. Para thumbs/títulos, APPROVE preserva uma opção aprovada, REJECT rejeita e SELECT escolhe a opção ativa sem rejeitar automaticamente outras aprovadas. Use listar_pacote_producao_projeto para ver tudo. O fluxo preferencial de entrega final é gerar_pacote_final → listar_pacotes_prontos_para_download → obter_link_download_pacote → confirmar_download_pacote; o ZIP fica no R2 e o agente local baixa direto da URL assinada. V61.3 mantém FAST PUSH URL como rota principal: quando existe URL pública útil, use importar_candidatas_url_lote e deixe a Biblioteca baixar diretamente da origem. FAST PUSH FILE é somente a opção secundária para mídia que já está fisicamente no ChatGPT: use importar_candidata_arquivo_fast_push, não gere URL intermediária de origem, não passe pelo materializador pesado e preserve source_type=CHAT_FILE. Quando project_id + project_item_id ou target_file identificarem o destino, a candidata deve entrar diretamente na ponte canônica de Pendentes/QA do PITEM; sem destino, fica na Inbox/PENDING_ANALYSIS para classificação posterior. O endpoint /api/fast-push/file também aceita bytes multipart diretamente e até 20 arquivos por requisição. V61.1 adiciona FAST PUSH BATCH: quando o Supervisor já possui URLs úteis, prefira importar_candidatas_url_lote; quando o arquivo já está no chat, use importar_candidata_arquivo_fast_push. A ingestão não espera QA, usa operation_id idempotente, SHA-256/dedupe e deixa PENDING_ANALYSIS na Inbox; aprovação/rejeição pode ser manual, Supervisor ou AI e aprovação promove para asset/slot. O materializador pesado fica como fallback quando não existem candidatas conhecidas. V61 ativa o Data Plane interno: depois do ACK, mutações MCP acordam o dispatcher via waitUntil; READY + capacidade disponível deve virar LEASED/RUNNING automaticamente, e o agendamento externo do ChatGPT/MCP pode fazer self-healing periódico sem depender de Cron da Vercel. Fan-out grande é persistido em chunks D1 de 20, e falha de criação aborta o plano em vez de deixá-lo ACCEPTED/DISPATCHING. continuar_processamento agora é alias assíncrono de executar_ate_divergencia. V60 torna supervisor_exchange o caminho quente: 1 comando do Supervisor cria um SUPERVISOR_PLAN, distribui N branches internas e o app continua até decision boundary. O Workspace de Políticas Operacionais mantém memória persistente de gaps e aplica LEARNED_POLICY versionada/cached antes do source routing e outras decisões operacionais; CORE_RULES são imutáveis e sempre vencem. Um gap resolvido deve virar regra reutilizável quando houver evidência, mas promoção GLOBAL nunca é silenciosa. Prefira supervisor_exchange/executar_ate_divergencia e work packets; não microgerencie o pipeline ferramenta por ferramenta. O source routing aplica hard filter por domínio, universo, composition_class, capability e configuração ANTES do fan-out; paralelismo nunca deve multiplicar rotas incompatíveis. V59 mantém REJEITAR + CONTINUAR atômico/idempotente como compatibilidade. V58 adiciona backfill idempotente de projetos legados, corrige domínio legado e classifica aquisição de lease do Supervisor como baixo risco/reversível/idempotente. V57 preserva FAST CONTROL PLANE + PARALLEL DATA PLANE e corrige bindings de timestamp D1 no painel/telemetria. V56 usa FAST CONTROL PLANE + PARALLEL DATA PLANE. Prefira obter_snapshot_operacional com since_version e aplicar_decisoes_supervisor_lote; evite GETs de confirmação e use obter_resultado_operacao após timeout. Leituras simples nunca devem reconciliar ou tocar R2. Você administra a Corvo Library com Supervisor ChatGPT via MCP. Para produção em escala, prefira assumir_proximo_trabalho com worker_type + worker_id + worker_domain: ele aplica FIFO por etapa, skip locked, lease granular, limites por função/projeto/nicho e isolamento de domínio. Workers diferentes podem operar itens/etapas/projetos simultaneamente; não use lock global. O worker_domain deve combinar com project_domain, salvo MULTI/allowed_domains explicitamente autorizados. Depois da operação real, conclua com concluir_trabalho_worker ou registre falha estruturada com registrar_falha_worker. No início de uma nova execução/agendamento, chame assumir_proximo_trabalho_supervisor; guarde o execution_id retornado e envie-o em todas as mutações do mesmo projeto. Não faça heartbeat artificial: chamadas reais como obter_estado_supervisor, materializar, QA, relink, reconciliação e ZIP renovam automaticamente o lease. Se o lease expirar, o watchdog marca a execução como ABANDONADA e o pipeline como PRONTO_PARA_RETOMADA sem apagar nada. Uma execução antiga nunca recupera controle automaticamente; mutações com execution_id substituído devem parar ao receber SUPERVISOR_REPLACED/LEASE_NOT_OWNED. Projetos concluídos/cancelados não são assumidos.  O APP executa e persiste; o MCP mostra evidências e controla; o ChatGPT supervisiona. O toggle Supervisor IA nunca chama Cloudflare, Llama, Qwen ou outro modelo automaticamente. A coleta noturna é determinística e pode rodar com o Supervisor desligado, acumulando somente candidatas reais materializadas em PARA_ANALISE. Toda materialização real READY_FOR_VISUAL_QA deve ser reconciliada automaticamente com o projeto/item correto; uma candidata fica em PARA_QA_VISUAL e as demais permanecem em PARA_ANALISE até promoção. Ao supervisionar, comece por obter_resumo_noturno e obter_estado_supervisor; use obter_candidatas_qa_visual para ver arquivos reais antes de APROVAR, REJEITAR, RELINKAR ou autorizar correção técnica. MATERIALIZADO nunca significa APROVADO. Aprovados ficam congelados e não podem ser reabertos. Projetos CONCLUIDO_MANUAL permanecem bloqueados até autorização explícita; quando necessário use reabrir_projeto_concluido com confirmar_reabertura=true, preservando os congelados e limitando a execução aos gaps autorizados. Trabalhe somente nos gaps. Use Biblioteca primeiro apenas com pelo menos 5 variações próximas aprovadas; abaixo disso colete externamente e alimente a Biblioteca após aprovação. Não repita a mesma candidata/URL ruim; aplique circuit breaker e reavalie após duas correções técnicas sem melhora. Correções permitidas são estritamente técnicas; nunca gere, componha, combine ou fabrique representação visual como fallback. Perfis SOURCE_PROFILE, prioridades, hosts, queries, timeout e limites podem ser ajustados e salvos como padrão. Preserve IDs, proveniência, logs, target files e segredos. ZIP final usa apenas assets aprovados/congelados. Para a aba Pendentes do Catálogo, use obter_pendentes_para_qa_catalogo para ver arquivos reais; depois selecione IDs e use aprovar_pendentes_em_lote ou excluir_pendentes_permanentemente_em_lote com confirmação explícita. Cloud AI legado permanece fora do caminho principal e só pode ser usado como fallback explícito. Use obter_painel_operacional_producao para observar workers, filas, saturação e gargalos e obter_dashboard_gerencial para métricas por etapa/nicho/worker; sincronizar_filas_workers reconcilia a fila derivada do estado canônico. O watchdog granular devolve somente a unidade abandonada à sua fila preservando original_ready_at. Ferramentas rotineiras de leitura, busca, coleta, materialização, QA/aprovação, download, upload/versionamento de SCRIPT/REQUIREMENTS, reconciliação e ajustes reversíveis estão anotadas como baixo risco e elegíveis para uso contínuo; não peça microconfirmações dentro de uma execução já autorizada. Exclusão física permanente e limpeza destrutiva continuam fora do modo contínuo e exigem confirmação explícita. A configuração de credenciais Cloudflare é sensível e também fica fora do modo contínuo." } }, 200, { "mcp-protocol-version": protocolVersion });
+  }
+  if (method === "ping") return response({ jsonrpc: "2.0", id: requestId, result: {} });
+  if (method === "tools/list") return response({ jsonrpc: "2.0", id: requestId, result: { tools } });
+  if (method === "tools/call") {
+    const name = String(params.name ?? ""), args = params.arguments ?? {};
+    try {
+      const url = new URL(request.url), code = getMcpCodeFromRequest(request);
+      if (!code) throw new Error("Código MCP ausente no contexto da ferramenta.");
+      const data = await executeTool(name, args, url.origin, code, { authMs, parseMs });
+      const raw = data && typeof data === "object" ? data as Record<string, unknown> : { resultado: data };
+      const resources = Array.isArray(raw.__resources) ? raw.__resources as Array<Record<string, unknown>> : [];
+      const structuredContent = { ...raw };
+      delete structuredContent.__resources;
+      const resourceDeliveryEnabled = await isMcpFileResourceDeliveryEnabled();
+      const content = [
+        { type: "text", text: JSON.stringify(structuredContent, null, 2) },
+        ...(resourceDeliveryEnabled ? resources.flatMap((resource) => typeof resource.uri === "string" && typeof resource.name === "string" ? [{
+          type: "resource_link",
+          uri: resource.uri,
+          name: resource.name,
+          ...(typeof resource.mimeType === "string" ? { mimeType: resource.mimeType } : {}),
+          ...(typeof resource.description === "string" ? { description: resource.description } : {}),
+        }] : []) : []),
+      ];
+      const definition = tools.find((entry) => entry.name === name);
+      const alreadyDispatches = new Set(["executar_dispatcher_workers", "executar_tick_planos"]);
+      const shouldWakeDispatcher = Boolean(definition && !definition.annotations.readOnlyHint && !alreadyDispatches.has(name));
+      if (shouldWakeDispatcher) wakeDataPlane(`MCP_WAKE:${name}`);
+      return response({ jsonrpc: "2.0", id: requestId, result: { content, structuredContent, isError: false } }, 200, { "x-corvo-dispatch-wake": shouldWakeDispatcher ? "1" : "0" });
+    } catch (toolError) {
+      const messageText = toolError instanceof Error ? toolError.message : "Falha inesperada";
+      return response({ jsonrpc: "2.0", id: requestId, result: { content: [{ type: "text", text: messageText }], structuredContent: { error: messageText }, isError: true } });
+    }
+  }
+  return error(requestId, -32601, `Método não suportado: ${method}`);
+}

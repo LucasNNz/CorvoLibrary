@@ -1,0 +1,54 @@
+CORVO LIBRARY V50 — REABERTURA SEGURA DE PROJETO CONCLUIDO
+Data: 2026-08-27
+
+OBJETIVO
+Corrigir o caso em que um projeto foi marcado CONCLUIDO_MANUAL antes de todos os gaps serem resolvidos, sem enfraquecer o bloqueio de segurança de projetos concluídos.
+
+REGRA CENTRAL
+- CONCLUIDO_MANUAL continua bloqueado por padrao.
+- Processamento normal, anexos, materializacao e QA nao reabrem projeto implicitamente.
+- Reabertura exige acao explicita do proprietario ou do Supervisor MCP.
+- Assets/itens aprovados e congelados nunca sao reabertos.
+
+NOVA FERRAMENTA MCP
+reabrir_projeto_concluido
+
+Entradas:
+- projeto_id: ID de qualquer execucao do grupo logico.
+- confirmar_reabertura: deve ser true.
+- gaps: opcional; aceita item_id, item_key ou target filename.
+- motivo: motivo auditavel.
+
+COMPORTAMENTO
+1. Resolve o grupo logico do video e escolhe a execucao canonica.
+2. Confirma que o grupo estava concluido manualmente.
+3. Le os itens da versao ativa da execucao canonica.
+4. Preserva sem alteracao: APPROVED, FROZEN, LINKED_FROM_LIBRARY, LINKED_FROM_FAMILY.
+5. Sem lista de gaps: reabre somente os itens nao resolvidos existentes.
+6. Com lista de gaps: somente os gaps explicitamente indicados permanecem ativos; outros nao resolvidos ficam PAUSED_BY_SUPERVISOR.
+7. FAILED, FAILED_SEMANTIC, FAILED_INFRASTRUCTURE, REJECTED, CANCELLED e PAUSED autorizados sao normalizados para RELINK_REQUIRED quando precisam voltar ao fluxo.
+8. Candidatas de itens fora do escopo saem de PARA_QA_VISUAL para PARA_ANALISE; decisoes pendentes desses itens sao encerradas como FORA_ESCOPO_REABERTURA.
+9. Execucoes duplicadas do mesmo video ficam GROUPED_ARCHIVED e nao podem receber materializacao/reconciliacao.
+10. O projeto canonico recebe PARTIAL_READY, PROCESSING, QA_IN_PROGRESS ou READY_TO_COMPLETE conforme os estados reais.
+11. Requests do mesmo grupo voltam para Em andamento.
+12. Todos os passos geram eventos de auditoria com origem, motivo, projeto solicitado, projeto canonico, congelados preservados, gaps e grupo.
+
+INTERFACE
+- O botao Desconcluir projeto passa a ser Reabrir projeto.
+- Exige confirmacao visual do proprietario.
+- A rota da interface usa a mesma funcao segura do MCP.
+
+SEGURANCA
+- Nenhuma acao existente de continuar/processar consegue atravessar CONCLUIDO_MANUAL.
+- O Supervisor precisa chamar a ferramenta especifica e confirmar explicitamente.
+- Itens congelados permanecem protegidos.
+- Materializacoes de execucoes GROUPED_ARCHIVED e itens PAUSED_BY_SUPERVISOR nao sao religadas pela ponte automaticamente.
+
+MIGRACAO
+Nao ha mudanca de schema. GROUPED_ARCHIVED usa o campo textual de status existente.
+
+VALIDACAO ESPERADA
+- MCP tools e handlers 1:1.
+- Nenhuma ferramenta orfa.
+- Sintaxe TS/TSX dos arquivos alterados valida.
+- Migracoes D1 anteriores permanecem inalteradas.

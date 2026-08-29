@@ -1,0 +1,80 @@
+CORVO LIBRARY V61.9 FINAL — CHECKLIST DE TRANSFERENCIA
+
+[1] VERCEL
+- Criar projeto separado: corvo-library.
+- Framework: Next.js.
+- Node: 24.x.
+- Nenhum Vercel Cron.
+
+[2] TURSO
+- Conectar Turso ao projeto.
+- Variaveis obrigatorias de bootstrap: TURSO_DATABASE_URL e TURSO_AUTH_TOKEN.
+- Nao e necessario criar tabelas manualmente.
+
+[3] PRIMEIRO ACESSO
+- Criar login simples: nome + senha; marque lembrar neste aparelho.
+- Abrir Configuracoes.
+- Salvar/reaproveitar Cloudflare R2 + D1.
+- Se D1 Database ID ficar vazio, o app localiza automaticamente pela estrutura da Corvo Library.
+
+[4] DADOS REAIS
+- Clicar Migrar D1 -> Turso.
+- O R2 NAO e movido.
+- O app compara contagens das tabelas D1 x Turso.
+- Se o Turso ja tiver dados, nenhuma substituicao ocorre sem confirmacao explicita.
+- Antes de substituir um Turso com dados, o app grava snapshot no R2 e oferece rollback.
+
+[5] VALIDAR
+- Health.
+- Catalogo e assets.
+- Projetos/PITEMs.
+- MCP.
+- Signed previews R2.
+- FAST PUSH de imagens URL/FILE canônico (fluxo geral).
+- THUMB especificamente: somente URL HTTPS ou PUT assinado direto no R2; nenhum arquivo via chat.
+- FAST VISUAL PACKET.
+- FAST DECIDE/APPROVE/REJECT.
+- Data Plane.
+- ZIP/producao: fila assíncrona -> READY_FOR_DOWNLOAD -> URL R2 assinada -> confirmação.
+
+[6] CORTE
+- Atualizar endpoint MCP do ChatGPT para a URL Vercel /mcp.
+- Atualizar agendamentos ChatGPT para chamar o novo MCP.
+- Manter Sites/D1 antigo intactos ate validar o corte.
+
+[7] TYPECHECK FIX3
+- O build executa primeiro: tsc --noEmit --pretty false.
+- Se houver erro TypeScript residual, a Vercel devera listar o conjunto antes de iniciar next build.
+- Depois do typecheck limpo, o Next.js executa o build normal.
+
+
+## THUMB + ZIP LINKS-ONLY FINAL
+
+A V61.9 consolida THUMB e pacote final sem transporte de arquivos pelo chat. THUMB entra por `fast_push_generated_media` (HTTPS) ou `preparar_upload_midia` + PUT direto R2 + `confirmar_upload_midia`; QA usa `obter_thumbs_links`. O ZIP final usa fila idempotente `download_packages`: `gerar_pacote_final` → `listar_pacotes_prontos_para_download` → `obter_link_download_pacote` → download direto no PC → `confirmar_download_pacote`. A conclusão do projeto também enfileira o pacote automaticamente. `MCP_FILE_RESOURCE_DELIVERY` permanece estruturalmente desabilitado. Veja `IMPLEMENTACAO_THUMB_ZIP_LINKS_ONLY_V61_9.txt`.
+
+
+[8] THUMB + ZIP LINKS_ONLY
+- fast_push_generated_media / importar_midia_por_url: HTTPS servidor->servidor.
+- preparar_upload_midia / confirmar_upload_midia: upload direto para URL PUT assinada R2.
+- obter_thumbs_links: QA por preview_signed_url.
+- fast_decidir_thumbs_lote: APPROVE/REJECT/SELECT.
+- gerar_pacote_final: ACK QUEUED com package_id/operation_id.
+- listar_pacotes_prontos_para_download: polling JSON.
+- obter_link_download_pacote: URL R2 assinada para o agente local.
+- confirmar_download_pacote: DOWNLOADED idempotente com sha256_verified.
+- MCP resource_link permanece estruturalmente DISABLED.
+
+FIX7 — PRIMEIRO ACESSO / TURSO
+-----------------------------
+Antes do formulário de login, a aplicação valida se a integração Turso está
+conectada ao deployment. Se TURSO_DATABASE_URL/TURSO_AUTH_TOKEN ainda não forem
+injetados pela Vercel, a própria UI mostra "Conectar banco da Library".
+
+Caminho recomendado: Vercel Marketplace -> Turso Cloud -> conectar recurso ao
+projeto (produção + preview). A integração injeta as credenciais; não editar .env.
+Depois, gerar/redeployar e clicar "Já conectei — verificar novamente".
+
+
+FIX11 — RETOMADA RÁPIDA / MIGRAÇÃO LIMPA DO ACERVO
+---------------------------------------------------
+Quando o D1 antigo não estiver acessível administrativamente, a tela de primeiro uso aceita `corvo-library-assets.json` e restaura o catálogo no Turso sem copiar o R2. O schema atual completo é criado, defaults operacionais são semeados e os IDs/r2_key originais são preservados. Histórico experimental de filas/leases/execuções antigas não é carregado. Veja `IMPLEMENTACAO_FIX11_MIGRACAO_LIMPA_ACERVO.txt`.

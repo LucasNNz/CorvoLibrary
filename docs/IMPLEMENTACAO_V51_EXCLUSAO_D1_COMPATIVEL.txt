@@ -1,0 +1,140 @@
+CORVO LIBRARY — V51
+CORRECAO: EXCLUSAO COMPATIVEL COM CLOUDFLARE D1
+Data: 2026-08-27
+
+======================================================================
+1. PROBLEMA
+======================================================================
+
+Ao excluir projetos ou assets na aba Pendentes, a interface devolvia:
+
+  failed query begin params
+
+As duas rotas de exclusao usavam o mesmo padrao:
+
+  db.transaction(async (tx) => { ... })
+
+No runtime Cloudflare D1 usado pelo projeto, o caminho generico de transaction()
+tentava iniciar BEGIN e falhava antes de executar as exclusoes.
+
+O problema era compartilhado por:
+
+- lib/asset-catalog-admin.ts -> deleteAssetsPermanently()
+- lib/automatic-projects.ts -> deleteAutomaticProjects()
+
+======================================================================
+2. CORRECAO
+======================================================================
+
+As duas rotas agora usam db.batch(), que e o primitivo atomico do D1 ja usado
+em outras partes do proprio Corvo Library.
+
+PENDENTES:
+
+1. localizar somente os assets realmente deletaveis;
+2. em um unico db.batch():
+   - limpar linkedAssetId dos itens de projeto;
+   - excluir asset_usage;
+   - excluir asset_consultations;
+   - excluir batch_assets;
+   - excluir assets;
+3. depois do commit do D1, remover cada objeto fisico do R2.
+
+PROJETOS:
+
+1. resolver o grupo logico inteiro do video;
+2. localizar TXT/ZIPs do grupo;
+3. localizar requests correspondentes;
+4. em db.batch():
+   - excluir supervisor_decision_queue;
+   - excluir supervisor_project_candidates;
+   - excluir automatic_project_events;
+   - excluir automatic_project_items;
+   - excluir automatic_project_files;
+   - excluir automatic_projects;
+   - excluir requests correspondentes quando existirem;
+5. depois do commit do D1, limpar TXT/ZIPs fisicos do R2.
+
+Assets aprovados do Catalogo nao sao apagados ao excluir um projeto.
+
+======================================================================
+3. PROTECAO CONTRA INCONSISTENCIA D1/R2
+======================================================================
+
+Na V50, os arquivos R2 eram removidos antes da tentativa de transaction().
+Portanto o erro de BEGIN podia deixar o banco apontando para um arquivo que ja
+havia sido apagado.
+
+Na V51 a ordem e:
+
+  D1 ATOMICO PRIMEIRO -> R2 DEPOIS
+
+Se D1 falhar, nenhum arquivo fisico e removido.
+
+Se D1 concluir e um objeto R2 falhar na limpeza, a exclusao logica permanece
+concluida e a resposta informa:
+
+  r2_cleanup_failures: [...]
+
+A interface mostra essa pendencia explicitamente.
+
+A limpeza R2 e idempotente; repetir uma exclusao/limpeza nao recria registros.
+
+======================================================================
+4. VALIDACOES
+======================================================================
+
+- Busca global por db.transaction(): 0 usos nos fluxos do app/lib.
+- Teste de regressao Node:
+  tests/d1-deletion-regression.test.mjs
+  Resultado: 2/2 PASS.
+- Sintaxe TypeScript/TSX: 47 arquivos, 0 diagnostics de parse.
+- MCP: 134 ferramentas / 134 handlers / 0 orfaos / 0 duplicados.
+- Migracoes 0000 -> 0010 em SQLite limpo: 11/11 OK.
+- Simulacao SQL com foreign_keys=ON:
+  - exclusao de asset + usos/consultas/lote/vinculo de projeto: OK;
+  - exclusao de projeto + itens/arquivos/eventos/fila/candidatas/request: OK;
+  - PRAGMA foreign_key_check depois das exclusoes: vazio.
+- Nenhuma nova migracao necessaria.
+
+======================================================================
+5. ARQUIVOS ALTERADOS
+======================================================================
+
+- lib/asset-catalog-admin.ts
+- lib/automatic-projects.ts
+- app/page.tsx
+- README.md
+
+Novo:
+
+- tests/d1-deletion-regression.test.mjs
+- docs/IMPLEMENTACAO_V51_EXCLUSAO_D1_COMPATIVEL.txt
+
+======================================================================
+6. RESULTADO ESPERADO
+======================================================================
+
+EXCLUIR PENDENTE:
+
+selecionar pendente
+-> confirmar exclusao
+-> batch D1 atomico
+-> limpar R2
+-> atualizar metricas reais
+-> item desaparece de Pendentes
+
+EXCLUIR PROJETO:
+
+selecionar projeto(s)
+-> confirmar exclusao
+-> resolver grupo logico
+-> batch D1 atomico
+-> limpar TXT/ZIP R2
+-> projeto desaparece da lista
+
+Nao deve mais ocorrer:
+
+  failed query begin params
+
+FIM

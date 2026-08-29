@@ -1,0 +1,96 @@
+CORVO LIBRARY V61.8 — INDUSTRIAL LINKS-ONLY + FAST QA
+
+OBJETIVO
+Operação industrial do Supervisor usando IDs, metadados e URLs assinadas do R2, sem entregar arquivos físicos ao chat no modo padrão.
+
+JÁ EXISTIA E FOI PRESERVADO
+- FAST PUSH URL/FILE e múltiplas candidatas por PITEM.
+- Ponte canônica projeto/PITEM -> Pendentes/QA.
+- decisão/rejeição em lote e hard delete protegido.
+- FAST ACK durável por operation_id.
+- FAST_APPROVE_PROJECT_ITEMS.
+- relink em lote e Data Plane com waitUntil/cron.
+
+IMPLEMENTADO / CONSOLIDADO NA V61.8
+1. MODO GLOBAL LINKS-ONLY
+   - CHAT_FILE_DELIVERY_MODE=OFF por padrão.
+   - MCP_FILE_RESOURCE_DELIVERY=DISABLED por padrão.
+   - bloqueio central de resource_link no MCP quando industrial.
+   - ferramentas: obter_modo_entrega_chat / configurar_modo_entrega_chat.
+
+2. FAST VISUAL PACKET
+   - fast_visual_packet / obter_candidatas_qa_links.
+   - filtros project_id, item_ids, target_files, waiting QA, limit.
+   - retorna candidato/PITEM/MATFILE/contexto/referências/metadados e signed_preview_url do R2.
+   - signed_original_url opcional.
+   - sem resource MCP.
+
+3. FAST DECIDE ASSÍNCRONO
+   - fast_decidir_candidatas_lote.
+   - mistura APPROVE / REJECT / RELINK em uma operação.
+   - persiste operation_id + job e devolve ACK compacto.
+   - finalização ocorre no Data Plane.
+   - obter_resultado_operacao acompanha QUEUED/PROCESSING/COMPLETED.
+
+4. ALIASES RÁPIDOS
+   - aprovar_itens_lote.
+   - aprovar_target_files_lote.
+   - rejeitar_candidatas_lote.
+   - rejeitar_itens_lote.
+   - relink_itens_lote.
+   - fast_push_urls_lote.
+   - aprovação por item é segura: mais de uma candidata => AMBIGUOUS_REQUIRES_CANDIDATE_ID.
+   - rejeitar por PITEM/target_file fecha todas as candidatas ativas e termina o buffer em RELINK_REQUIRED; não desfaz item já congelado/aprovado.
+
+5. WORK PACKET LITE
+   - obter_work_packet_lite.
+   - contadores + próximos itens + status/referência/contexto/prioridade + candidata pronta + preview URL.
+
+6. RESUMO OPERACIONAL CURTO
+   - obter_resumo_operacional_curto.
+   - total/approved/waiting_qa/relink/collecting/failed/last_operation_ms/next_recommended_action.
+
+7. CONTACT SHEET OPCIONAL
+   - gerar_grid_candidatas.
+   - monta grid PNG no backend a partir dos bytes canônicos do R2.
+   - retorna apenas URL assinada + posição -> candidate_id.
+
+8. PACOTE QA JSON
+   - exportar_pacote_qa_json.
+   - persiste JSON no R2 com candidatas, URLs, contexto e target_file.
+   - retorna URL assinada; não entrega arquivo MCP.
+
+9. REDIRECIONAMENTO DAS ROTAS LEGADAS
+   No modo industrial, as superfícies antigas de QA retornam links-only:
+   - obter_candidatas_qa_visual
+   - obter_assets_para_qa_lote
+   - obter_pendentes_para_qa_catalogo
+   resource_link só volta se o modo legado for explicitamente ativado.
+
+10. API OWNER INDUSTRIAL
+   - GET /api/industrial/visual-packet
+   - GET /api/industrial/work-packet-lite
+   - GET /api/industrial/summary
+   - GET/POST /api/industrial/delivery-mode
+   - POST /api/industrial/contact-sheet
+   - POST /api/industrial/decide (202 + operation_id)
+
+FLUXO PADRÃO RECOMENDADO
+fast_push_urls_lote
+-> fast_visual_packet
+-> fast_decidir_candidatas_lote
+-> obter_resultado_operacao / obter_resumo_operacional_curto
+
+SEGURANÇA / PREVISIBILIDADE
+- Bytes permanecem no R2.
+- Preview sempre aponta para cópia canônica interna, não para URL externa de origem.
+- Asset catalogado continua sendo resultado de aprovação/congelamento.
+- Hard delete continua separado e destrutivo.
+- Candidatas/PITEMs e materialização interna permanecem camadas distintas.
+
+PERFORMANCE
+A arquitetura remove entrega de arquivo e trabalho pesado do caminho de leitura/ACK. As metas do requisito (<500 ms para 10 previews, <1,5 s para 50; <2 s para 20 decisões, <5 s para 50) permanecem metas de produção e devem ser medidas após deploy, pois assinatura R2/D1 e cold start dependem do ambiente real.
+
+VALIDAÇÃO LOCAL
+- 119/119 testes executáveis de regressão/SQL passaram.
+- 73 arquivos TS/TSX: 0 erros de sintaxe no parser TypeScript.

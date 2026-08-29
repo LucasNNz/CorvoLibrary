@@ -1,0 +1,768 @@
+ESPECIFICAÇÃO — HEARTBEAT, LEASE E RETOMADA AUTOMÁTICA
+BIBLIOTECA SEMÂNTICA 14
+
+OBJETIVO
+
+Implementar na Biblioteca Semântica 14 um mecanismo que permita identificar automaticamente quando uma execução do ChatGPT/Supervisor deixou de responder antes de concluir um projeto, sem depender de o chat avisar que caiu.
+
+A Biblioteca deve manter o estado real do pipeline persistido e permitir que uma execução futura, inclusive disparada por agendamento, continue exatamente do ponto em que a execução anterior parou.
+
+A solução não deve depender de manter um chat específico vivo.
+
+
+1. PRINCÍPIO GERAL
+
+O ChatGPT/Supervisor é considerado um trabalhador temporário.
+
+A Biblioteca Semântica 14 é a memória operacional permanente.
+
+Fluxo esperado:
+
+CHAT INICIA
+→ assume o projeto
+→ Biblioteca cria um lease temporário
+→ operações reais renovam o lease
+→ chat continua trabalhando normalmente
+
+SE O CHAT PARAR
+→ não haverá novas renovações
+→ watchdog detecta lease expirado
+→ execução é marcada como abandonada
+→ projeto é marcado como pronto para retomada
+
+NOVA EXECUÇÃO / AGENDAMENTO
+→ consulta projetos prontos para retomada
+→ reconcilia estado real
+→ assume novo lease
+→ continua do ponto persistido
+
+
+2. NÃO USAR PING ARTIFICIAL DO MCP PARA O CHAT
+
+Não implementar uma rotina em que o MCP tente enviar mensagens do tipo:
+
+"Ainda está aí?"
+
+para o ChatGPT a cada 2 minutos.
+
+O MCP não deve depender de uma resposta ativa de um chat específico.
+
+A ausência de chamadas reais do Supervisor deve ser utilizada como sinal de inatividade.
+
+
+3. LEASE DO SUPERVISOR
+
+Quando uma execução do ChatGPT assumir um projeto, criar um lease temporário.
+
+Campos recomendados:
+
+supervisor_execution_id
+supervisor_lease_started_at
+supervisor_last_seen_at
+supervisor_lease_expires_at
+supervisor_status
+
+Exemplo:
+
+supervisor_execution_id = "EXEC-20260827-ABC123"
+supervisor_status = "ATIVO"
+supervisor_last_seen_at = timestamp atual
+supervisor_lease_expires_at = timestamp atual + 10 minutos
+
+O execution_id deve ser único por execução do Supervisor.
+
+
+4. HEARTBEAT BASEADO EM ATIVIDADE REAL
+
+Não criar chamadas extras apenas para heartbeat.
+
+Toda operação MCP relevante executada pelo Supervisor deve renovar automaticamente:
+
+supervisor_last_seen_at
+supervisor_lease_expires_at
+
+Exemplos de operações que devem renovar o lease:
+
+- obter_estado_supervisor
+- processar_projeto_automatico
+- executar_coleta_automatica
+- materializar_url
+- adicionar_candidatas_item
+- alterar_query
+- trocar_fonte
+- registrar_qa_projeto
+- aplicar_correcao_tecnica
+- retry_item_materializacao
+- reconciliar_projeto_automatico
+- aprovar/rejeitar assets
+- congelar assets
+- gerar/exportar ZIP
+- demais operações pertencentes ao mesmo projeto
+
+Regra:
+
+SE uma operação válida do Supervisor ocorrer
+E execution_id for o dono atual do lease
+ENTÃO:
+    supervisor_last_seen_at = agora
+    supervisor_lease_expires_at = agora + TTL_DO_LEASE
+
+
+5. TTL RECOMENDADO
+
+Valor inicial recomendado:
+
+TTL_DO_LEASE = 10 minutos
+
+O TTL pode ser configurável.
+
+Faixa recomendada:
+
+5 a 15 minutos
+
+Não usar 1 hora como TTL.
+
+O agendamento pode rodar de hora em hora, mas a Biblioteca deve detectar abandono muito antes.
+
+
+6. WATCHDOG
+
+Criar um watchdog interno na Biblioteca Semântica 14.
+
+Frequência recomendada:
+
+a cada 2 minutos
+
+O watchdog NÃO precisa falar com o ChatGPT.
+
+Ele deve apenas consultar os leases persistidos.
+
+Regra básica:
+
+SE:
+    supervisor_status = "ATIVO"
+E:
+    supervisor_lease_expires_at < agora
+E:
+    projeto não está concluído
+ENTÃO:
+    marcar execução anterior como abandonada
+    marcar pipeline como pronto para retomada
+
+
+7. ESTADOS RECOMENDADOS
+
+Separar o estado da EXECUÇÃO do estado do PIPELINE.
+
+Não usar apenas um campo "status" para tudo.
+
+
+7.1 STATUS DA EXECUÇÃO
+
+Valores sugeridos:
+
+ATIVO
+CONCLUIDA
+ABANDONADA
+CANCELADA
+SUBSTITUIDA
+
+
+7.2 STATUS DO PIPELINE
+
+Valores sugeridos:
+
+AGUARDANDO
+EM_PROCESSAMENTO
+AGUARDANDO_QA
+AGUARDANDO_RELINK
+AGUARDANDO_MATERIALIZACAO
+PRONTO_PARA_RETOMADA
+CONCLUIDO
+CANCELADO
+ERRO_REAL
+
+
+8. QUANDO O CHAT PARAR DE RESPONDER
+
+Se o lease expirar, NÃO marcar o projeto como ERRO.
+
+Marcar:
+
+status_execucao = ABANDONADA
+status_pipeline = PRONTO_PARA_RETOMADA
+
+Também registrar:
+
+motivo_retomada = "LEASE_SUPERVISOR_EXPIRADO"
+abandoned_at = timestamp atual
+previous_execution_id = execution_id antigo
+
+Importante:
+
+"ABANDONADA" significa que aquela execução deixou de responder.
+
+Não significa que o projeto falhou.
+
+
+9. PROCESSO NÃO FINALIZADO
+
+Na interface, pode ser exibido ao usuário:
+
+PROCESSO NÃO FINALIZADO
+
+Mas internamente é recomendado manter estados estruturados:
+
+execução: ABANDONADA
+pipeline: PRONTO_PARA_RETOMADA
+
+Isso evita confundir queda de chat com falha técnica real da Biblioteca.
+
+
+10. RECONCILIAÇÃO ANTES DA RETOMADA
+
+Antes de uma nova execução continuar um projeto abandonado, executar reconciliação.
+
+A reconciliação deve verificar o estado real persistido:
+
+- SCRIPT recebido
+- REQUIREMENTS recebido
+- targets existentes
+- itens concluídos
+- itens em coleta
+- URLs encontradas
+- candidatas materializadas
+- assets em PARA_ANALISE
+- assets aprovados
+- assets congelados
+- gaps
+- RELINK_REQUIRED
+- correções técnicas pendentes
+- lotes concluídos
+- lotes interrompidos
+- ZIP já existente
+- decisões pendentes do Supervisor
+
+A reconciliação deve preservar tudo o que já foi concluído.
+
+
+11. REGRA DE RETOMADA
+
+Uma nova execução deve:
+
+1. consultar projetos com PRONTO_PARA_RETOMADA;
+2. escolher um projeto elegível;
+3. reconciliar o projeto;
+4. tentar adquirir um novo lease;
+5. gerar novo supervisor_execution_id;
+6. alterar pipeline para EM_PROCESSAMENTO;
+7. continuar apenas os passos pendentes;
+8. nunca recriar trabalho já persistido.
+
+
+12. AQUISIÇÃO ATÔMICA DO LEASE
+
+A tomada de um projeto deve ser atômica.
+
+Evitar:
+
+Execução A vê projeto livre.
+Execução B vê projeto livre.
+As duas assumem simultaneamente.
+
+A aquisição deve funcionar como compare-and-set.
+
+Exemplo lógico:
+
+UPDATE projects
+SET
+    supervisor_execution_id = NOVO_ID,
+    supervisor_status = 'ATIVO',
+    supervisor_last_seen_at = AGORA,
+    supervisor_lease_expires_at = AGORA + TTL,
+    pipeline_status = 'EM_PROCESSAMENTO'
+WHERE
+    project_id = ?
+AND (
+    supervisor_status != 'ATIVO'
+    OR supervisor_lease_expires_at < AGORA
+);
+
+A execução só pode continuar se realmente tiver adquirido o lease.
+
+
+13. IDEMPOTÊNCIA
+
+Todas as operações críticas devem continuar idempotentes.
+
+Especialmente:
+
+- criação de targets
+- anexos SCRIPT/REQUIREMENTS
+- coleta
+- materialização
+- QA
+- aprovação
+- freeze
+- relink
+- importação
+- geração de ZIP
+
+Chaves recomendadas:
+
+project_id
+item_id
+candidate_id
+materialization_id
+operation_type
+idempotency_key
+
+Uma retomada não pode gerar duplicatas apenas porque outra execução assumiu o projeto.
+
+
+14. PROTEÇÃO CONTRA DUAS EXECUÇÕES SIMULTÂNEAS
+
+Toda operação mutável deve verificar:
+
+execution_id enviado == execution_id atualmente dono do lease
+
+Se não for:
+
+retornar algo equivalente a:
+
+LEASE_NOT_OWNED
+
+ou:
+
+SUPERVISOR_REPLACED
+
+A execução antiga deve parar de modificar o projeto.
+
+
+15. CASO DE UMA EXECUÇÃO ANTIGA VOLTAR
+
+Cenário:
+
+- execução A perde o lease;
+- execução B assume o projeto;
+- execução A volta a responder.
+
+A execução A NÃO deve recuperar automaticamente o controle.
+
+Se tentar escrever:
+
+execution_id A != execution_id atual B
+
+Resultado:
+
+rejeitar mutação da execução A.
+
+Leituras podem continuar sendo permitidas, mas alterações devem ser bloqueadas.
+
+
+16. WATCHDOG NÃO DEVE APAGAR NADA
+
+Ao detectar abandono, o watchdog NÃO deve:
+
+- excluir arquivos;
+- cancelar materializações válidas;
+- excluir candidatas;
+- desfazer QA;
+- apagar assets aprovados;
+- recriar lotes;
+- reiniciar projeto do zero.
+
+Ele deve somente:
+
+- expirar o lease;
+- registrar abandono;
+- alterar o pipeline para PRONTO_PARA_RETOMADA;
+- preservar todo o estado.
+
+
+17. MATERIALIZAÇÕES EM BACKGROUND
+
+Se uma materialização da Biblioteca continuar tecnicamente rodando depois que o chat desaparecer, ela pode terminar normalmente.
+
+O watchdog não deve cancelar automaticamente trabalhos determinísticos já iniciados.
+
+Quando a próxima execução assumir, ela deve reconciliar o resultado dessas operações.
+
+Exemplo:
+
+Chat morreu quando havia 20 downloads em andamento.
+
+Depois:
+- 14 terminaram;
+- 4 falharam;
+- 2 ficaram pendentes.
+
+Nova execução deve enxergar exatamente esse resultado e continuar somente nos 6 não concluídos.
+
+
+18. INTERAÇÃO COM O AGENDAMENTO DO CHATGPT
+
+Criar um agendamento periódico, por exemplo de 1 em 1 hora.
+
+A execução agendada deve iniciar consultando a Biblioteca Semântica 14.
+
+Fluxo:
+
+1. obter painel global do Supervisor;
+2. localizar:
+   - PRONTO_PARA_RETOMADA;
+   - AGUARDANDO_QA;
+   - AGUARDANDO_RELINK;
+   - projetos incompletos elegíveis;
+3. ignorar projetos com lease válido pertencente a outra execução;
+4. adquirir lease de projeto elegível;
+5. reconciliar;
+6. continuar pipeline;
+7. persistir toda decisão;
+8. concluir ou deixar estado novamente retomável.
+
+
+19. PROJETOS COM LEASE AINDA VÁLIDO
+
+Se o agendamento encontrar:
+
+supervisor_status = ATIVO
+lease_expires_at > agora
+
+não deve assumir esse projeto.
+
+Pode:
+
+- ignorar e verificar outro projeto;
+- encerrar se não houver outro trabalho.
+
+
+20. PROJETOS COM LEASE EXPIRADO
+
+Se encontrar:
+
+supervisor_status = ATIVO
+lease_expires_at < agora
+
+deve tratar como execução abandonada.
+
+Processo:
+
+WATCHDOG ou nova execução
+→ marca ABANDONADA
+→ PRONTO_PARA_RETOMADA
+→ reconcilia
+→ novo Supervisor adquire lease
+
+
+21. LOG DE EVENTOS
+
+Registrar eventos cronológicos.
+
+Tipos sugeridos:
+
+SUPERVISOR_LEASE_ACQUIRED
+SUPERVISOR_HEARTBEAT_RENEWED
+SUPERVISOR_LEASE_EXPIRED
+SUPERVISOR_MARKED_ABANDONED
+PROJECT_READY_FOR_RESUME
+PROJECT_RECONCILED
+SUPERVISOR_REPLACED
+PROJECT_RESUMED
+PROJECT_COMPLETED
+
+Campos:
+
+event_id
+project_id
+execution_id
+previous_execution_id
+event_type
+timestamp
+metadata_json
+
+
+22. TELEMETRIA
+
+Adicionar métricas:
+
+supervisores_ativos
+leases_expirados_24h
+projetos_prontos_retomada
+retomadas_24h
+tempo_medio_para_retomada
+retomadas_com_sucesso
+colisoes_de_lease_impedidas
+execucoes_abandonadas
+projetos_concluidos_apos_retomada
+
+
+23. INTERFACE DA BIBLIOTECA
+
+Sugestão de estados visuais:
+
+VERDE
+EM PROCESSAMENTO
+
+AMARELO
+AGUARDANDO SUPERVISOR
+
+LARANJA
+PROCESSO NÃO FINALIZADO — PRONTO PARA RETOMADA
+
+AZUL
+RETOMADO POR NOVA EXECUÇÃO
+
+VERDE ESCURO
+CONCLUÍDO
+
+VERMELHO
+ERRO REAL
+
+Não apresentar uma queda de chat como "erro do projeto".
+
+
+24. ENDPOINT / FERRAMENTA MCP RECOMENDADA
+
+Criar uma ferramenta consolidada, por exemplo:
+
+assumir_proximo_trabalho_supervisor
+
+Ela poderia:
+
+- localizar projeto elegível;
+- validar lease;
+- reconciliar;
+- adquirir lease atomicamente;
+- retornar estado completo e próxima ação.
+
+Resposta conceitual:
+
+{
+  "projeto_id": "...",
+  "execution_id": "...",
+  "lease_expires_at": "...",
+  "pipeline_status": "EM_PROCESSAMENTO",
+  "resume_reason": "LEASE_ANTERIOR_EXPIRADO",
+  "next_action": "QA_VISUAL",
+  "pending_items": 17
+}
+
+Isso reduz várias chamadas e facilita a operação via agendamento.
+
+
+25. NEXT_ACTION
+
+Adicionar opcionalmente um campo persistido:
+
+next_action
+
+Valores possíveis:
+
+COLETAR
+MATERIALIZAR
+QA_VISUAL
+RELINK
+CORRECAO_TECNICA
+RECONCILIAR
+GERAR_ZIP
+FINALIZAR
+
+O next_action é uma otimização.
+
+O estado real persistido continua sendo a fonte de verdade.
+
+Se next_action divergir do estado real, a reconciliação deve prevalecer.
+
+
+26. NÃO DEPENDER DO CHAT ANTERIOR
+
+Uma nova execução não deve precisar:
+
+- ler a conversa anterior;
+- saber o que o chat anterior estava pensando;
+- receber mensagem do chat anterior;
+- receber "handoff" manual;
+- perguntar ao usuário "posso continuar?".
+
+Tudo necessário para a retomada deve existir na Biblioteca.
+
+
+27. REGRA DE BAIXO RISCO
+
+Operações de:
+
+- leitura de estado;
+- renovação de lease;
+- heartbeat;
+- reconciliação;
+- retomada;
+- materialização normal;
+- coleta;
+- QA persistente;
+- relink;
+- processamento automático;
+
+devem ser classificadas como baixo risco quando tecnicamente apropriado.
+
+O mecanismo de lease não deve provocar confirmações frequentes ao usuário.
+
+
+28. SEGURANÇA
+
+A expiração de lease NÃO concede permissão para operações destrutivas.
+
+Exclusões permanentes e ações realmente destrutivas continuam obedecendo às políticas próprias.
+
+O lease controla somente "quem pode operar o projeto", não amplia permissões.
+
+
+29. VALORES INICIAIS RECOMENDADOS
+
+WATCHDOG_INTERVAL = 2 minutos
+LEASE_TTL = 10 minutos
+RENEW_LEASE_ON_ACTIVITY = true
+AUTO_MARK_ABANDONED = true
+AUTO_READY_FOR_RESUME = true
+RECONCILE_BEFORE_RESUME = true
+REQUIRE_EXECUTION_ID_FOR_WRITES = true
+ALLOW_OLD_EXECUTION_WRITES = false
+
+
+30. EXEMPLO COMPLETO
+
+12:00
+Execução A assume PROJ-NARUTO.
+
+execution_id = EXEC-A
+lease_expires = 12:10
+
+12:03
+A materializa uma imagem.
+
+lease_expires = 12:13
+
+12:06
+A registra QA.
+
+lease_expires = 12:16
+
+12:07
+Chat trava.
+
+Nenhuma atualização é enviada.
+
+12:08
+Watchdog verifica.
+Lease ainda válido.
+Nada acontece.
+
+12:10
+Watchdog verifica.
+Lease ainda válido.
+
+12:16
+Lease expira.
+
+12:18
+Watchdog verifica.
+
+Marca:
+
+EXEC-A = ABANDONADA
+PROJ-NARUTO = PRONTO_PARA_RETOMADA
+
+Nada é apagado.
+
+13:00
+Agendamento inicia execução B.
+
+B consulta BS14.
+
+Encontra PROJ-NARUTO pronto para retomada.
+
+Reconcilia:
+
+122 targets
+54 concluídos
+13 PARA_ANALISE
+4 RELINK_REQUIRED
+51 ainda pendentes
+
+B adquire lease:
+
+execution_id = EXEC-B
+lease_expires = 13:10
+
+Pipeline volta para:
+
+EM_PROCESSAMENTO
+
+B continua dos 68 itens pendentes.
+
+Não recria os 54 já concluídos.
+
+
+31. CRITÉRIOS DE ACEITE
+
+A implementação só deve ser considerada concluída se:
+
+[ ] Um Supervisor consegue adquirir lease de projeto.
+
+[ ] Atividade real renova automaticamente o lease.
+
+[ ] O watchdog detecta lease expirado sem depender do ChatGPT.
+
+[ ] Uma queda abrupta do chat não deixa o projeto travado permanentemente.
+
+[ ] Projeto abandonado vira PRONTO_PARA_RETOMADA.
+
+[ ] Nenhum asset já produzido é perdido.
+
+[ ] Nova execução consegue assumir o projeto.
+
+[ ] Reconciliação ocorre antes da retomada.
+
+[ ] Execução antiga não consegue alterar o projeto após perder o lease.
+
+[ ] Duas execuções não conseguem adquirir simultaneamente o mesmo projeto.
+
+[ ] Operações repetidas não criam duplicatas.
+
+[ ] O agendamento consegue continuar projeto abandonado sem contexto do chat anterior.
+
+[ ] Projetos concluídos nunca são retomados indevidamente.
+
+[ ] Erro real e abandono de Supervisor são estados distintos.
+
+[ ] Watchdog não executa exclusões ou rollback destrutivo.
+
+
+32. RESULTADO ESPERADO
+
+Após a implementação, o pipeline deve funcionar desta forma:
+
+ROTEIRO
+→ BIBLIOTECA 14
+→ SUPERVISOR ASSUME
+→ COLETA
+→ MATERIALIZAÇÃO
+→ QA
+→ RELINK / CORREÇÕES
+→ ZIP
+→ CONCLUSÃO
+
+Se qualquer execução do ChatGPT desaparecer no meio:
+
+CHAT DESAPARECE
+→ LEASE EXPIRA
+→ WATCHDOG IDENTIFICA
+→ PROCESSO NÃO FINALIZADO
+→ PRONTO PARA RETOMADA
+→ AGENDAMENTO ASSUME
+→ RECONCILIA
+→ CONTINUA
+
+Sem intervenção manual do usuário.
+
+FIM

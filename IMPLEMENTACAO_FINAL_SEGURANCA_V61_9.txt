@@ -1,0 +1,44 @@
+CORVO LIBRARY V61.9 — FECHAMENTO FINAL DE IMPLEMENTACAO
+
+1. LOGIN
+- Primeiro acesso: nome + senha.
+- Senha: hash server-side; nunca persistir texto claro.
+- Lembrar neste aparelho: cookie HttpOnly persistente.
+- Login/logout/status/alteracao de credenciais pela propria interface.
+- Rotas administrativas exigem sessao real.
+- MCP permanece independente pelo codigo MCP.
+
+2. MASTER KEY
+- Segredos Cloudflare/R2/D1 usam master key estavel da Library.
+- Recuperacao protegida pela senha administrativa.
+- TURSO_AUTH_TOKEN pode ser rotacionado sem perder a capacidade de recuperar as configuracoes.
+- CORVO_CONFIG_ENCRYPTION_KEY permanece apenas como compatibilidade legada opcional.
+
+3. MIGRACAO D1 -> TURSO
+- Turso vazio recebe bootstrap minimo automaticamente.
+- Configuracao Cloudflare e migracao operadas pela interface.
+- D1 e exportado pela API Cloudflare.
+- R2 nao e copiado/movido.
+- Se Turso possuir dados, substituicao exige confirmacao.
+- Snapshot logico e gravado no R2 antes da substituicao.
+- Falha aciona rollback automatico.
+- Backup pode ser restaurado manualmente.
+- Bootstrap Vercel (login/sessoes/master key) e preservado durante a importacao.
+
+4. RUNTIME VERCEL
+- Next.js nativo.
+- Turso/libSQL.
+- R2 via S3.
+- Sharp.
+- waitUntil para Data Plane.
+- Sem Vercel Cron; scheduler periodico externo via ChatGPT -> MCP.
+
+5. VALIDACAO FINAL LOCAL
+- scripts/validate-vercel-migration.mjs: PASS.
+- 129/129 testes de regressao: PASS.
+- 42 Route Handlers detectados pela auditoria.
+- Marcador TECHNICAL_OPERATION_NOT_IMPLEMENTED e somente guarda defensiva; todas as operacoes aceitas pela whitelist possuem handler.
+
+6. GATE RESTANTE
+- npm install + next build no primeiro Preview Vercel.
+- Smoke test com Turso/R2/D1 reais antes do corte do endpoint MCP.

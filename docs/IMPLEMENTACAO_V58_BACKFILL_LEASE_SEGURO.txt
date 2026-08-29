@@ -1,0 +1,108 @@
+CORVO LIBRARY V58 — BACKFILL LEGADO + LEASE SEGURO
+
+OBJETIVO
+Corrigir os dois bloqueios observados na Biblioteca Semântica 15 antes de continuar projetos grandes:
+1. projetos antigos existentes, mas com state_version/contadores/filas novos não sincronizados;
+2. aquisição de lease do Supervisor classificada de forma insuficientemente idempotente/reversível para uso contínuo pelo conector.
+
+IMPLEMENTADO
+
+1. MIGRAÇÃO 0014 — BACKFILL DE PROJETOS LEGADOS
+- Seleciona automaticamente a versão mais recente que realmente possui automatic_project_items quando active_version aponta para uma versão vazia.
+- Recalcula total_items, approved_count, frozen_count, collecting_count, materializing_count, waiting_qa_count, relink_count, technical_count, waiting_seed_count, failed_count e pending_count.
+- Incrementa state_version para projetos legados com itens reais.
+- Deriva pipeline_status e next_action sem reabrir projetos terminalmente concluídos/cancelados.
+- Preserva todos os arquivos, assets aprovados, materializações, lotes e histórico.
+- Nenhum DELETE/DROP é executado pela migração.
+
+2. DOMÍNIO LEGADO
+- Projetos Naruto antigos com GENERAL passam para ANIME.
+- A migração inclui também outros universos de anime conhecidos usados pelo CorvoQuiz.
+- item_domain acompanha project_domain apenas quando estava vazio/GENERAL; domínios explicitamente definidos são preservados.
+
+3. BACKFILL A PARTIR DO REQUIREMENTS
+Nova rotina backfillAutomaticProjectItemsFromFiles:
+- se o projeto antigo não possuir os itens canônicos da versão atual, lê o REQUIREMENTS real já salvo no R2;
+- usa o parser normal do projeto;
+- recria os automatic_project_items de forma idempotente;
+- NÃO chama busca externa, coleta, materialização nem resolve a Biblioteca automaticamente;
+- não recria itens quando a versão canônica já existe.
+
+4. NOVA FERRAMENTA MCP
+backfill_projetos_legados
+- baixo risco;
+- idempotente;
+- reversível no sentido operacional;
+- pode corrigir um projeto específico ou todos os legados;
+- opcionalmente sincroniza as filas derivadas depois do backfill.
+
+5. AQUISIÇÃO DO LEASE DO SUPERVISOR
+assumir_proximo_trabalho_supervisor agora é explicitamente publicada como:
+- destructiveHint=false;
+- idempotentHint=true;
+- openWorldHint=false;
+- openai/isConsequential=false;
+- corvo/reversible=true;
+- corvo/leaseOnly=true;
+- corvo/autoUseAllowed=true.
+
+A descrição também deixa claro que a operação apenas cria/renova lease temporário; ela não exclui arquivos, não aprova assets e não altera conteúdo semântico.
+
+6. AQUISIÇÃO FIFO GENÉRICA
+assumir_proximo_trabalho recebeu os mesmos metadados explícitos reversible/leaseOnly/autoUseAllowed.
+
+7. AUTO-REPARO AO ASSUMIR
+Depois que o Supervisor adquire o projeto, antes da reconciliação normal:
+- backfillAutomaticProjectItemsFromFiles();
+- backfillLegacyProjects();
+- syncWorkerQueue();
+- reconcileAutomaticProject();
+
+Assim um projeto migrado não inicia a nova execução com total=0 se os dados reais já existem.
+
+8. NARUTO — CENÁRIO SIMULADO
+Simulação criada com:
+- nome NARUTO — SOBREVIVA AOS EXAMES CHUNIN;
+- project_domain=GENERAL;
+- active_version=2 sem itens;
+- itens reais na versão 1;
+- state_version=1;
+- contadores zerados.
+
+Após 0014:
+- active_version=1;
+- project_domain=ANIME;
+- state_version=2;
+- total_items=5;
+- approved_count=1;
+- frozen_count=1;
+- waiting_qa_count=1;
+- relink_count=1;
+- pending_count=3;
+- next_action=QA_VISUAL.
+Resultado: PASS.
+
+VALIDAÇÃO
+- Testes funcionais/regressão sem rendered-html: 44/44 PASS.
+- Migrações 0000→0014: 15/15 PASS em SQLite limpo.
+- Simulação específica de projeto Naruto legado: PASS.
+- TypeScript/TSX parse: 53 arquivos, 0 erros sintáticos.
+- MCP: 157 ferramentas únicas / 157 handlers / 0 órfãos.
+- Política MCP V58: 153 baixo risco; 3 destrutivas; 1 sensível.
+
+BUILD
+- npm run build foi tentado.
+- Bloqueio: vinext indisponível no ambiente atual.
+- O teste rendered-html depende de dist/server/index.js e, portanto, não pode ser executado sem build.
+- Não foi marcado artificialmente como aprovado.
+
+OBSERVAÇÃO SOBRE O RUNTIME OPENAI
+As anotações do MCP agora classificam corretamente a aquisição de lease como não destrutiva, idempotente, não consequencial e reversível. A decisão final de o host exibir ou não uma confirmação continua pertencendo ao runtime da OpenAI; o app não pode garantir/comandar a UI do host.
+
+RESULTADO ESPERADO APÓS DEPLOY
+1. Migração 0014 corrige imediatamente os projetos antigos que já possuem automatic_project_items.
+2. Se os itens canônicos ainda não existirem, backfill_projetos_legados ou a primeira aquisição de lease reconstrói os itens a partir do REQUIREMENTS persistido.
+3. Naruto passa de GENERAL para ANIME.
+4. Os contadores deixam de aparecer total=0 quando há itens reais.
+5. As filas worker são sincronizadas após o backfill.
+6. O Supervisor recebe execution_id e pode continuar QA/relink/coleta pelo projeto reconciliado.

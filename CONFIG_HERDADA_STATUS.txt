@@ -1,0 +1,18 @@
+CORVO LIBRARY V61.9 — PERFIL DE CONFIGURACAO HERDADO
+
+STATUS: IMPLEMENTADO
+
+- O D1 exportado e importado para Turso preserva a tabela settings integralmente.
+- O registro historico secret_cloudflare_connection e mantido byte a byte.
+- O aplicativo referencia o mesmo perfil persistente; nao cria um perfil paralelo.
+- Foi adicionado cloudflare_connection_manifest_v1 para guardar apenas metadados nao secretos recuperaveis.
+- Atualizar pela aba Configuracoes sobrescreve o perfil persistente e o manifesto.
+- A configuracao passa a valer para qualquer PC que acesse a mesma Library.
+- Nenhum token, Secret Access Key ou chave de criptografia e gravado em TXT/documentacao.
+- Referencias internas nao secretas ficam em lib/legacy-config-reference.ts.
+- Bucket historicamente conhecido usado como fallback de referencia: corvo-library.
+
+LIMITACAO LEGADA:
+Se o registro antigo estiver criptografado com CORVO_CONFIG_ENCRYPTION_KEY que nao esteja mais disponivel,
+a V61.9 preserva o registro mas nao pode matematicamente recuperar o segredo. Nesse caso, somente o segredo/token
+precisa ser renovado uma vez; os campos recuperaveis continuam pre-preenchidos quando disponiveis.

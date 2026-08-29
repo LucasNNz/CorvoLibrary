@@ -1,0 +1,25 @@
+CORVO LIBRARY V54 — ATIVAÇÃO DO WATCHDOG PERIÓDICO
+
+O código V54 implementa o handler Cloudflare Worker `scheduled()` em `worker/index.ts`.
+Quando o runtime de hospedagem anexar um Scheduled/Cron Trigger, esse handler chama
+`runSupervisorWatchdog()` sem depender de uma conversa do ChatGPT.
+
+CADÊNCIA RECOMENDADA PELA ESPECIFICAÇÃO
+- a cada 2 minutos
+- expressão cron equivalente em um ambiente Cloudflare Workers que aceite Cron Triggers:
+  */2 * * * *
+
+IMPORTANTE PARA O OPENAI SITES ATUAL
+O projeto usa `.openai/hosting.json` apenas para os bindings D1/R2 e o starter informa que
+não usa `wrangler.jsonc`. Este pacote não inventa uma chave de cron não documentada em
+`.openai/hosting.json`.
+
+Portanto:
+1. o handler periódico já está implementado e pronto para receber o trigger da plataforma;
+2. `assumir_proximo_trabalho_supervisor()` sempre executa o watchdog antes de escolher trabalho;
+3. `obter_estado_supervisor()` também reconcilia leases expirados;
+4. mesmo sem trigger periódico, uma execução futura nunca fica bloqueada por um lease vencido;
+5. para detectar a expiração exatamente em ~2 minutos sem qualquer nova requisição, o deploy
+   precisa anexar o trigger periódico ao Worker.
+
+O watchdog nunca apaga arquivos, cancela downloads válidos, desfaz QA ou reabre aprovados.

@@ -1,0 +1,17 @@
+CORVO LIBRARY V61.9 FIX10 — DIAGNOSTICO D1
+
+Objetivo: eliminar a mensagem genérica de validação da origem D1.
+
+A tela de migração agora diferencia:
+- CLOUDFLARE_TOKEN_INVALID
+- CLOUDFLARE_TOKEN_FORBIDDEN
+- CLOUDFLARE_D1_NONE_IN_ACCOUNT
+- CLOUDFLARE_D1_ID_NOT_FOUND
+- CLOUDFLARE_D1_CORVO_SIGNATURE_NOT_FOUND
+- CLOUDFLARE_D1_PROBE_FAILED
+- CLOUDFLARE_D1_CORVO_NOT_FOUND
+- CLOUDFLARE_D1_MULTIPLE_CORVO_DATABASES
+
+Nenhum token ou segredo é devolvido ao navegador. Apenas código, mensagem e diagnóstico não secreto.
+
+Se a conta/token forem válidos, mas nenhum D1 possuir as tabelas assets + automatic_projects + automatic_project_items + settings, o app informa explicitamente que a origem pode estar em outra conta ou ser gerenciada pelo Sites.
