@@ -1,5 +1,0 @@
-import { isOwnerRequest, ownerOnly } from "../../../../lib/mcp-access";
-import { listReadyDownloadPackages, queueFinalPackage } from "../../../../lib/delivery-packages";
-import { wakeDataPlane } from "../../../../lib/data-plane";
-export async function GET(request:Request){if(!await isOwnerRequest(request))return ownerOnly();try{const url=new URL(request.url);return Response.json(await listReadyDownloadPackages({project_id:url.searchParams.get("project_id"),since:url.searchParams.get("since"),status:url.searchParams.get("status"),limit:url.searchParams.get("limit")}));}catch(error){return Response.json({error:error instanceof Error?error.message:"PACKAGE_LIST_FAILED"},{status:400});}}
-export async function POST(request:Request){if(!await isOwnerRequest(request))return ownerOnly();try{const body=await request.json() as Record<string,unknown>;const result=await queueFinalPackage(body);wakeDataPlane(`API_PACKAGE_QUEUE:${String(body.project_id||"")}`);return Response.json(result,{status:202});}catch(error){return Response.json({error:error instanceof Error?error.message:"PACKAGE_QUEUE_FAILED"},{status:400});}}

@@ -1,3 +1,0 @@
-import { isOwnerRequest, ownerOnly } from "../../../../lib/mcp-access";
-import { generateCandidateContactSheet } from "../../../../lib/industrial-supervisor";
-export async function POST(request:Request){if(!await isOwnerRequest(request))return ownerOnly();try{const body=await request.json() as Record<string,unknown>;return Response.json(await generateCandidateContactSheet({project_id:body.project_id,limit:body.limit,columns:body.columns,item_ids:body.item_ids,target_files:body.target_files,only_waiting_qa:true}),{status:201});}catch(error){return Response.json({error:error instanceof Error?error.message:"CONTACT_SHEET_FAILED"},{status:400});}}
