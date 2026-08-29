@@ -21,7 +21,7 @@ const ALLOWED_TABLES = [
 
 type AllowedTable = (typeof ALLOWED_TABLES)[number];
 type Row = Record<string, unknown>;
-type Payload = {
+export type ProductionRecoveryPayload = {
   formatVersion?: unknown;
   source?: unknown;
   snapshot?: Record<string, unknown>;
@@ -61,7 +61,7 @@ function isProtectedSetting(key: string) {
   return PROTECTED_SETTING_KEYS.has(key) || key.startsWith("library_auth_session:");
 }
 
-function rowsFor(payload: Payload, table: AllowedTable): Row[] {
+function rowsFor(payload: ProductionRecoveryPayload, table: AllowedTable): Row[] {
   const raw = payload.tables?.[table];
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw new Error(`PRODUCTION_RECOVERY_TABLE_INVALID:${table}`);
@@ -72,7 +72,7 @@ function rowsFor(payload: Payload, table: AllowedTable): Row[] {
   });
 }
 
-function normalizePayload(payload: Payload) {
+function normalizePayload(payload: ProductionRecoveryPayload) {
   if (Number(payload.formatVersion) !== 1) throw new Error("PRODUCTION_RECOVERY_FORMAT_UNSUPPORTED");
   if (!payload.tables || typeof payload.tables !== "object") throw new Error("PRODUCTION_RECOVERY_TABLES_REQUIRED");
   const tables = Object.fromEntries(ALLOWED_TABLES.map((table) => [table, rowsFor(payload, table)])) as Record<AllowedTable, Row[]>;
@@ -101,7 +101,7 @@ async function tableInfo(table: AllowedTable) {
   return { columns, pk };
 }
 
-function upsertStatement(table: AllowedTable, row: Row, columns: string[], pk: string[]) {
+function upsertStatement(table: AllowedTable, row: Row, columns: string[], pk: string[], conflictMode: "update-existing" | "preserve-existing" = "update-existing") {
   const selected = columns.filter((column) => Object.prototype.hasOwnProperty.call(row, column));
   if (!selected.length) throw new Error(`PRODUCTION_RECOVERY_EMPTY_ROW:${table}`);
   for (const key of pk) if (!selected.includes(key) || row[key] === null || row[key] === undefined || row[key] === "") {
@@ -110,16 +110,17 @@ function upsertStatement(table: AllowedTable, row: Row, columns: string[], pk: s
   const escaped = selected.map((column) => `"${column}"`);
   const updates = selected.filter((column) => !pk.includes(column)).map((column) => `"${column}"=excluded."${column}"`);
   const conflict = pk.map((column) => `"${column}"`).join(",");
-  const sql = `INSERT INTO "${table}" (${escaped.join(",")}) VALUES (${selected.map(() => "?").join(",")}) ON CONFLICT(${conflict}) DO ${updates.length ? `UPDATE SET ${updates.join(",")}` : "NOTHING"}`;
+  const action = conflictMode === "preserve-existing" ? "NOTHING" : (updates.length ? `UPDATE SET ${updates.join(",")}` : "NOTHING");
+  const sql = `INSERT INTO "${table}" (${escaped.join(",")}) VALUES (${selected.map(() => "?").join(",")}) ON CONFLICT(${conflict}) DO ${action}`;
   return { sql, args:selected.map((column) => row[column] === undefined ? null : row[column] as never) };
 }
 
-async function importTable(table: AllowedTable, rows: Row[]) {
+async function importTable(table: AllowedTable, rows: Row[], conflictMode: "update-existing" | "preserve-existing") {
   if (!rows.length) return { table, imported:0 };
   const client = getLibsqlClient();
   const info = await tableInfo(table);
   for (let index=0; index<rows.length; index+=75) {
-    const chunk = rows.slice(index,index+75).map((row) => upsertStatement(table,row,info.columns,info.pk));
+    const chunk = rows.slice(index,index+75).map((row) => upsertStatement(table,row,info.columns,info.pk,conflictMode));
     await client.batch(chunk,"write");
   }
   return { table, imported:rows.length };
@@ -152,7 +153,7 @@ export async function getProductionRecoveryPreflight() {
   return { ready:true, ...(await currentCounts()), expectedSchemaTables:CURRENT_SCHEMA_TABLE_COUNT, mode:"NON_DESTRUCTIVE_PRODUCTION_MERGE" };
 }
 
-export async function importProductionRecovery(payload: Payload) {
+export async function importProductionRecovery(payload: ProductionRecoveryPayload, options: { conflictMode?: "update-existing" | "preserve-existing" } = {}) {
   const normalized=normalizePayload(payload);
   await ensureCurrentApplicationSchema();
 
@@ -161,7 +162,8 @@ export async function importProductionRecovery(payload: Payload) {
     "collection_sources","source_profiles","source_route_metrics","operational_policies","worker_capacity_limits","semantic_stock_policies","settings",
   ];
   const imported=[];
-  for (const table of order) imported.push(await importTable(table,normalized.tables[table]));
+  const conflictMode = options.conflictMode || "update-existing";
+  for (const table of order) imported.push(await importTable(table,normalized.tables[table],conflictMode));
 
   const assetIds=normalized.tables.assets.map((row)=>String(row.id));
   const usageIds=normalized.tables.asset_usage.map((row)=>String(row.id));

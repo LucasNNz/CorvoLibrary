@@ -1,0 +1,34 @@
+CORVO LIBRARY V61.9 FIX14 — ZERO-TOUCH PRODUCTION BOOTSTRAP
+============================================================
+
+OBJETIVO
+- Eliminar upload manual de JSON e bloqueio por D1 legado.
+- Fazer a Library iniciar usando Turso + R2 como arquitetura oficial.
+- Incorporar o snapshot curado de produção ao próprio deploy.
+
+BOOTSTRAP AUTOMATICO
+- /api/auth/status garante o schema atual e executa o bootstrap uma unica vez.
+- Snapshot embutido: data/production-recovery-v1.json.
+- 929 assets.
+- 1.176 registros de uso.
+- 39 configuracoes operacionais seguras.
+- requests/imports/batches/fontes/perfis/politicas/limites uteis.
+- conflitos usam PRESERVE_EXISTING: nenhuma linha atual e sobrescrita.
+- marcador automatic_production_bootstrap_v1 impede ressuscitar dados antigos depois que a migracao terminou.
+- login, sessoes, master-key e credenciais R2 atuais sao preservados.
+
+R2
+- A entrega continua por URL assinada direta, sem proxy de bytes pela Vercel.
+- A integridade fisica e conferida automaticamente em background pelo prefixo assets/.
+- Resultado persistido em settings:r2_catalog_integrity_v1.
+- A checagem e somente leitura no R2; nao copia/apaga objetos.
+
+D1 LEGADO
+- Nao bloqueia mais a abertura da aplicacao.
+- APIs antigas continuam no codigo apenas como fallback administrativo.
+- Na interface, D1 aparece somente como legado/opcional.
+
+VALIDACAO
+- node --test tests/*.test.mjs: 163/163 PASS.
+- scripts/validate-vercel-migration.mjs: VERCEL_MIGRATION_STATIC_OK.
+- 53 Route Handlers.

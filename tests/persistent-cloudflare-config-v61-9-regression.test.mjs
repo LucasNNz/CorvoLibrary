@@ -5,19 +5,18 @@ import { readFile } from 'node:fs/promises';
 const root = new URL('../', import.meta.url);
 const text = (path) => readFile(new URL(path, root), 'utf8');
 
-test('Cloudflare config persists R2 and D1 without mandatory manual encryption env', async () => {
+test('Cloudflare config persists R2 and keeps legacy D1 recovery optional', async () => {
   const [crypto, secure, route, page, runtime] = await Promise.all([
     text('lib/config-crypto.ts'), text('lib/secure-settings.ts'), text('app/api/cloudflare-connection/route.ts'), text('app/page.tsx'), text('lib/platform/runtime.ts'),
   ]);
   assert.match(crypto, /TURSO_AUTH_TOKEN/);
-  assert.match(crypto, /CORVO_CONFIG_ENCRYPTION_KEY/); // optional legacy override remains supported
+  assert.match(crypto, /CORVO_CONFIG_ENCRYPTION_KEY/);
   assert.match(secure, /d1ApiToken/);
-  assert.match(secure, /d1DatabaseId/);
   assert.match(secure, /needsReconfigure/);
-  assert.match(route, /resolveCorvoD1Database/);
   assert.match(route, /testR2Connection/);
   assert.match(page, /Salvar e cravar configuração/);
-  assert.match(page, /qualquer computador/);
+  assert.match(page, /O Turso já é o banco oficial/);
+  assert.match(page, /D1 LEGADO \(OPCIONAL\)/);
   assert.match(runtime, /decryptPersistedConfig/);
 });
 
